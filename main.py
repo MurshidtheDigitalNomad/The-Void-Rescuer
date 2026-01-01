@@ -530,6 +530,84 @@ def render_tether_beam(ship: SpaceShip, astronaut: SpaceAstronaut, time_value: f
 	glLineWidth(1.0)
 
 
+def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3, astronaut_mass: float = 5.0) -> float:
+	"""
+	Calculate the minimum thrust power needed to pull an astronaut against gravity.
+	Returns the required power value.
+	"""
+	gravity_force = black_hole.force_at(astronaut_position)
+	force_magnitude = gravity_force.magnitude()
+	
+	# Required power scales with gravity force and astronaut mass
+	# This is a simplified calculation for display purposes
+	required_power = force_magnitude * astronaut_mass / 10.0  # Normalized for display
+	return required_power
+
+
+def render_hud_text(window_width: int, window_height: int, ship: SpaceShip, 
+	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole) -> None:
+	"""
+	Render HUD text in top-left corner showing required power.
+	"""
+	# Find nearest astronaut
+	nearest_astronaut = None
+	min_distance = float('inf')
+	
+	for astronaut in astronauts:
+		if not astronaut.is_rescued:
+			dist = (astronaut.position - ship.position).magnitude()
+			if dist < min_distance:
+				min_distance = dist
+				nearest_astronaut = astronaut
+	
+	# Switch to 2D projection for HUD
+	glMatrixMode(GL_PROJECTION)
+	glPushMatrix()
+	glLoadIdentity()
+	glOrtho(0, window_width, window_height, 0, -1, 1)
+	glMatrixMode(GL_MODELVIEW)
+	glPushMatrix()
+	glLoadIdentity()
+	
+	# Disable depth testing for HUD
+	glDisable(GL_DEPTH_TEST)
+	
+	# Display required power if astronaut is nearby
+	if nearest_astronaut and min_distance < 500:
+		required_power = calculate_required_power(black_hole, nearest_astronaut.position)
+		current_power = ship.thrust_power
+		
+		# Color based on whether power is sufficient
+		if current_power >= required_power:
+			glColor3f(0.0, 1.0, 0.0)  # Green - sufficient power
+		else:
+			glColor3f(1.0, 0.0, 0.0)  # Red - insufficient power
+		
+		glRasterPos2f(15, 25)
+		text = f"Required Power: {required_power:.1f}"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glRasterPos2f(15, 50)
+		text = f"Current Power: {current_power:.1f}"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glRasterPos2f(15, 75)
+		text = f"Distance to Astronaut: {min_distance:.1f}"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
+	# Re-enable depth testing
+	glEnable(GL_DEPTH_TEST)
+	
+	# Restore projection matrices
+	glPopMatrix()
+	glMatrixMode(GL_PROJECTION)
+	glPopMatrix()
+	glMatrixMode(GL_MODELVIEW)
+
+
 class InputController:
 	"""
 	Handles keyboard input for ship control.
@@ -726,6 +804,10 @@ class VoidRescuerGame(GameApplication):
 		# Draw asteroids
 		for asteroid in self.asteroids:
 			asteroid.render()
+		
+		# Render HUD text (required power info)
+		render_hud_text(self.window_width, self.window_height, self.ship, 
+		               self.astronauts, self.black_hole)
 		
 		glutSwapBuffers()
 
