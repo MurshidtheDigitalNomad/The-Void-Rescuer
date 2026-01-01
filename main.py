@@ -173,6 +173,7 @@ class BlackHole(GravitySource):
 		"""
 		Calculate gravitational force using inverse-square law.
 		F = G * M / r^2, directed toward center.
+		Incorporates the mass of the object for realistic attraction.
 		"""
 		delta = self.position - position
 		distance = delta.magnitude()
@@ -180,8 +181,13 @@ class BlackHole(GravitySource):
 		if distance < 1.0:  # Prevent division by zero
 			distance = 1.0
 
-		# Inverse square law: force magnitude
+		# Inverse square law with stronger pull very close to singularity
+		# Force increases dramatically as distance decreases
 		force_magnitude = self.strength / (distance * distance)
+		
+		# Add exponential factor for extreme pull near event horizon
+		if distance < 200:
+			force_magnitude *= (200.0 / distance) ** 0.5  # Extra pull near singularity
 
 		# Direction toward black hole (normalized)
 		direction = delta.normalized()
@@ -203,13 +209,15 @@ class SpaceShip(Ship):
 		self,
 		position: Vector3 = Vector3(400, 0, 0),
 		heading_degrees: float = 180.0,
-		mass: float = 10.0,
+		mass: float = 50.0,  # Increased mass for stronger gravity effects
 	):
 		self.position = position
 		self.velocity = Vector3()
 		self.heading_degrees = heading_degrees
 		self.mass = mass
-		self.thrust_power = 50.0
+		self.thrust_power = 100.0  # Base thrust power
+		self.thrust_power_min = 20.0  # Minimum thrust
+		self.thrust_power_max = 300.0  # Maximum thrust
 		self.drag_coefficient = 0.98  # Natural slowdown
 		self.gravity_source: Optional[GravitySource] = None
 
@@ -224,6 +232,16 @@ class SpaceShip(Ship):
 
 		acceleration = Vector3(thrust_x, thrust_y, 0) * (1.0 / self.mass)
 		self.velocity = self.velocity + acceleration
+
+	def increase_power(self) -> None:
+		"""Increase thrust power (P key)."""
+		self.thrust_power = min(self.thrust_power + 10.0, self.thrust_power_max)
+		print(f"Thrust power: {self.thrust_power:.1f}")
+
+	def decrease_power(self) -> None:
+		"""Decrease thrust power (O key)."""
+		self.thrust_power = max(self.thrust_power - 10.0, self.thrust_power_min)
+		print(f"Thrust power: {self.thrust_power:.1f}")
 
 	def rotate(self, delta_degrees: float) -> None:
 		"""Adjust heading based on input."""
@@ -533,6 +551,7 @@ class InputController:
 		"""
 		Process input and update ship accordingly.
 		WASD for movement, Arrow keys for rotation.
+		P to increase power, O to decrease power.
 		"""
 		# Rotation (Arrow keys or A/D)
 		if 'left' in self.keys_pressed or 'a' in self.keys_pressed:
@@ -547,6 +566,15 @@ class InputController:
 
 		if 's' in self.keys_pressed or 'down' in self.keys_pressed:
 			self.ship.apply_thrust(-0.5)  # Backward (slower)
+
+		# Power adjustment
+		if 'p' in self.keys_pressed:
+			self.ship.increase_power()
+			self.keys_pressed.discard('p')  # One-time press
+
+		if 'o' in self.keys_pressed:
+			self.ship.decrease_power()
+			self.keys_pressed.discard('o')  # One-time press
 
 
 # =========================================================================
@@ -565,6 +593,7 @@ class VoidRescuerGame(GameApplication):
 		self.game_over = False
 		self.last_time = time.time()
 		self.current_time = 0.0
+		self.ship_destroyed = False  # Track if ship was destroyed
 		
 		# Game objects
 		self.black_hole: Optional[BlackHole] = None
@@ -636,10 +665,25 @@ class VoidRescuerGame(GameApplication):
 		for asteroid in self.asteroids:
 			asteroid.update(dt)
 		
-		# Check event horizon
+		# Calculate distance from black hole
+		ship_distance = (self.ship.position - self.black_hole.position).magnitude()
+		
+		# Check if ship is inside event horizon
 		if self.black_hole.is_inside_event_horizon(self.ship.position):
 			self.game_over = True
-			print("GAME OVER! Ship crossed the event horizon!")
+			self.ship_destroyed = True
+			print("\n" + "="*50)
+			print("GAME OVER! Ship destroyed by black hole!")
+			print(f"Final distance from singularity: {ship_distance:.1f} units")
+			print("="*50)
+			# Hide ship by moving it far away
+			self.ship.position = Vector3(10000, 10000, 10000)
+			return
+		
+		# Warning when getting close
+		if ship_distance < 300 and not self.ship_destroyed:
+			if int(self.current_time * 2) % 2 == 0:  # Flash warning
+				print(f"\r⚠️  WARNING! Distance: {ship_distance:.1f} units - INCREASE POWER!", end="")
 		
 		# Render
 		self.render()
@@ -779,18 +823,21 @@ def main() -> None:
 	"""Entry point - initialize GLUT and start game loop."""
 	global game
 	
-	print("="*60)
+	print("="*70)
 	print("THE VOID RESCUER - Member 1: Physics & Movement Demo")
-	print("="*60)
+	print("="*70)
 	print("\nControls:")
 	print("  W/Up Arrow    - Forward thrust")
 	print("  S/Down Arrow  - Backward thrust")
 	print("  A/Left Arrow  - Rotate left")
 	print("  D/Right Arrow - Rotate right")
+	print("  P             - Increase ship thrust power")
+	print("  O             - Decrease ship thrust power")
 	print("  SPACE         - Tether/untether nearest astronaut")
 	print("  ESC           - Quit")
-	print("\nObjective: Test physics and tethering!")
-	print("="*60)
+	print("\nObjective: Escape the black hole's gravity!")
+	print("Strategy: Get closer to rescue astronauts, but increase power to escape!")
+	print("="*70)
 	print()
 	
 	# Initialize GLUT
