@@ -533,14 +533,15 @@ def render_tether_beam(ship: SpaceShip, astronaut: SpaceAstronaut, time_value: f
 def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3, astronaut_mass: float = 5.0) -> float:
 	"""
 	Calculate the minimum thrust power needed to pull an astronaut against gravity.
-	Returns the required power value.
+	Returns the required power value in the same units as ship.thrust_power.
 	"""
 	gravity_force = black_hole.force_at(astronaut_position)
 	force_magnitude = gravity_force.magnitude()
 	
-	# Required power scales with gravity force and astronaut mass
-	# This is a simplified calculation for display purposes
-	required_power = force_magnitude * astronaut_mass / 10.0  # Normalized for display
+	# Convert gravity force to required power
+	# Power needed = force_magnitude * scaling_factor to match thrust power units
+	# Scale so it aligns with thrust_power range (20-300)
+	required_power = force_magnitude * 10.0  # Direct scaling of force to power units
 	return required_power
 
 
@@ -750,10 +751,13 @@ class VoidRescuerGame(GameApplication):
 		if self.black_hole.is_inside_event_horizon(self.ship.position):
 			self.game_over = True
 			self.ship_destroyed = True
-			print("\n" + "="*50)
-			print("GAME OVER! Ship destroyed by black hole!")
+			print("\n" + "="*60)
+			print("█" * 60)
+			print("███  GAME OVER! SHIP DESTROYED BY BLACK HOLE!  ███")
+			print("█" * 60)
 			print(f"Final distance from singularity: {ship_distance:.1f} units")
-			print("="*50)
+			print(f"Ship's thrust power was: {self.ship.thrust_power:.1f}")
+			print("="*60 + "\n")
 			# Hide ship by moving it far away
 			self.ship.position = Vector3(10000, 10000, 10000)
 			return
