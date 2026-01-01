@@ -573,7 +573,7 @@ def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3,
 def render_hud_text(window_width: int, window_height: int, ship: SpaceShip, 
 	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False) -> None:
 	"""
-	Render HUD text in top-left corner showing power information.
+	Render HUD text in top-left corner showing power, fuel, and rescue information.
 	"""
 	# Find nearest astronaut
 	nearest_astronaut = None
@@ -585,6 +585,10 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 			if dist < min_distance:
 				min_distance = dist
 				nearest_astronaut = astronaut
+	
+	# Count rescued astronauts
+	rescued_count = sum(1 for a in astronauts if a.is_rescued)
+	total_astronauts = len(astronauts)
 	
 	# Switch to 2D projection for HUD
 	glMatrixMode(GL_PROJECTION)
@@ -605,6 +609,27 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	for char in text:
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 	
+	# Display fuel level with color coding
+	fuel_percent = (ship.fuel / ship.fuel_max) * 100 if ship.fuel_max > 0 else 0
+	if fuel_percent > 50:
+		glColor3f(0.2, 1.0, 0.2)  # Green - plenty of fuel
+	elif fuel_percent > 20:
+		glColor3f(1.0, 1.0, 0.0)  # Yellow - low fuel warning
+	else:
+		glColor3f(1.0, 0.0, 0.0)  # Red - critical fuel
+	
+	glRasterPos2f(15, 50)
+	text = f"Fuel: {ship.fuel:.0f}/{ship.fuel_max:.0f} ({fuel_percent:.1f}%)"
+	for char in text:
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
+	# Display rescue count
+	glColor3f(0.2, 1.0, 0.2)  # Green for rescue status
+	glRasterPos2f(15, 75)
+	text = f"Rescued: {rescued_count}/{total_astronauts}"
+	for char in text:
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
 	# Display required power if astronaut is nearby
 	if nearest_astronaut and min_distance < 500:
 		required_power = calculate_required_power(black_hole, nearest_astronaut.position)
@@ -616,12 +641,12 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		else:
 			glColor3f(1.0, 0.0, 0.0)  # Red - insufficient power
 		
-		glRasterPos2f(15, 50)
+		glRasterPos2f(15, 100)
 		text = f"Required Power: {required_power:.1f}"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 		
-		glRasterPos2f(15, 75)
+		glRasterPos2f(15, 125)
 		text = f"Distance to Astronaut: {min_distance:.1f}"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
@@ -629,8 +654,8 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	# Display game over message if game is over
 	if game_over:
 		glColor3f(1.0, 0.0, 0.0)  # Red for game over
-		glRasterPos2f(window_width // 2 - 150, window_height // 2 - 50)
-		text = "GAME OVER! SHIP DESTROYED!"
+		glRasterPos2f(window_width // 2 - 200, window_height // 2 - 50)
+		text = "GAME OVER - OUT OF FUEL!"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 		
