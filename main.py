@@ -220,6 +220,10 @@ class SpaceShip(Ship):
 		self.thrust_power_max = 300.0  # Maximum thrust
 		self.drag_coefficient = 0.98  # Natural slowdown
 		self.gravity_source: Optional[GravitySource] = None
+		# Fuel system
+		self.fuel = 1000.0  # Starting fuel
+		self.fuel_max = 1000.0  # Maximum fuel capacity
+		self.fuel_consumption_rate = 0.05  # Base consumption per unit power per second
 
 	def apply_thrust(self, amount: float) -> None:
 		"""
@@ -261,6 +265,11 @@ class SpaceShip(Ship):
 
 		# Apply drag (natural slowdown)
 		self.velocity = self.velocity * self.drag_coefficient
+
+		# Consume fuel based on thrust power
+		# Higher power = higher consumption
+		fuel_consumed = self.thrust_power * self.fuel_consumption_rate * dt
+		self.fuel = max(0, self.fuel - fuel_consumed)
 
 		# Update position
 		self.position = self.position + self.velocity * dt
@@ -398,6 +407,13 @@ class SpaceAstronaut(Astronaut):
 		direction = self.tethered_to.position - self.position
 		distance = direction.magnitude()
 
+		# Check if astronaut reached the ship (rescued)
+		if distance < 20.0:
+			self.is_rescued = True
+			self.detach_tether()
+			print(f"✓ Astronaut Rescued! Total rescued: {self.is_rescued}")
+			return
+
 		# Check if tether should snap
 		if distance > self.tether_max_distance:
 			self.detach_tether()
@@ -437,28 +453,37 @@ class SpaceAstronaut(Astronaut):
 		self.float_offset += dt * 2.0  # Animation speed
 
 	def render(self) -> None:
-		"""Render the astronaut with floating animation."""
+		"""Render the astronaut with floating animation and rescue status."""
 		glPushMatrix()
 		
 		# Move to astronaut position
 		float_wave = math.sin(self.float_offset) * 5.0  # Bobbing motion
 		glTranslatef(self.position.x, self.position.y, self.position.z + float_wave)
 		
-		# Helmet (sphere)
-		glColor3f(0.9, 0.9, 1.0)  # White-ish helmet
+		# Helmet (sphere) - color changes if rescued
+		if self.is_rescued:
+			glColor3f(0.0, 1.0, 0.0)  # Green - rescued!
+		else:
+			glColor3f(0.9, 0.9, 1.0)  # White-ish helmet
 		glPushMatrix()
 		glutSolidSphere(8, 16, 16)
 		glPopMatrix()
 		
 		# Visor (cyan sphere, slightly smaller and forward)
-		glColor3f(0.0, 1.0, 1.0)  # Cyan
+		if self.is_rescued:
+			glColor3f(0.0, 1.0, 0.5)  # Light green
+		else:
+			glColor3f(0.0, 1.0, 1.0)  # Cyan
 		glPushMatrix()
 		glTranslatef(0, 5, 0)
 		glutSolidSphere(4, 12, 12)
 		glPopMatrix()
 		
 		# Life Support Pack (cube behind)
-		glColor3f(0.6, 0.6, 0.6)  # Gray backpack
+		if self.is_rescued:
+			glColor3f(0.2, 0.8, 0.2)  # Darker green
+		else:
+			glColor3f(0.6, 0.6, 0.6)  # Gray backpack
 		glPushMatrix()
 		glTranslatef(0, -6, 0)
 		glScalef(1.2, 1.5, 0.5)  # Flat backpack shape
@@ -546,9 +571,9 @@ def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3,
 
 
 def render_hud_text(window_width: int, window_height: int, ship: SpaceShip, 
-	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole) -> None:
+	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False) -> None:
 	"""
-	Render HUD text in top-left corner showing required power.
+	Render HUD text in top-left corner showing power information.
 	"""
 	# Find nearest astronaut
 	nearest_astronaut = None
@@ -573,6 +598,13 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	# Disable depth testing for HUD
 	glDisable(GL_DEPTH_TEST)
 	
+	# Always display current power
+	glColor3f(0.2, 1.0, 0.2)  # Bright green
+	glRasterPos2f(15, 25)
+	text = f"Current Power: {ship.thrust_power:.1f}"
+	for char in text:
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
 	# Display required power if astronaut is nearby
 	if nearest_astronaut and min_distance < 500:
 		required_power = calculate_required_power(black_hole, nearest_astronaut.position)
@@ -584,18 +616,27 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		else:
 			glColor3f(1.0, 0.0, 0.0)  # Red - insufficient power
 		
-		glRasterPos2f(15, 25)
-		text = f"Required Power: {required_power:.1f}"
-		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
-		
 		glRasterPos2f(15, 50)
-		text = f"Current Power: {current_power:.1f}"
+		text = f"Required Power: {required_power:.1f}"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 		
 		glRasterPos2f(15, 75)
 		text = f"Distance to Astronaut: {min_distance:.1f}"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
+	# Display game over message if game is over
+	if game_over:
+		glColor3f(1.0, 0.0, 0.0)  # Red for game over
+		glRasterPos2f(window_width // 2 - 150, window_height // 2 - 50)
+		text = "GAME OVER! SHIP DESTROYED!"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
+		glRasterPos2f(window_width // 2 - 100, window_height // 2)
+		text = "Press R to Reload"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 	
@@ -725,6 +766,38 @@ class VoidRescuerGame(GameApplication):
 		
 		self.input_controller = InputController(self.ship)
 
+	def reload_game(self) -> None:
+		"""Reset the game to initial state."""
+		self.game_over = False
+		self.ship_destroyed = False
+		self.current_time = 0.0
+		self.last_time = time.time()
+		
+		# Reset ship
+		self.ship = SpaceShip(position=Vector3(400, 0, 0))
+		self.ship.gravity_source = self.black_hole
+		
+		# Reset astronauts
+		self.astronauts = []
+		for angle in [45, 135, 225, 315]:
+			rad = math.radians(angle)
+			pos = Vector3(math.cos(rad) * 300, math.sin(rad) * 300, 0)
+			astronaut = SpaceAstronaut(position=pos)
+			astronaut.gravity_source = self.black_hole
+			self.astronauts.append(astronaut)
+		
+		# Reset asteroids
+		self.asteroids = []
+		for angle in [0, 90, 180, 270]:
+			rad = math.radians(angle)
+			pos = Vector3(math.cos(rad) * 250, math.sin(rad) * 250, 0)
+			asteroid = SpaceAsteroid(position=pos)
+			asteroid.gravity_source = self.black_hole
+			self.asteroids.append(asteroid)
+		
+		self.input_controller = InputController(self.ship)
+		print("\nGame reloaded!\n")
+
 	def step(self, dt: float) -> None:
 		"""Single frame update including input, simulation, and rendering."""
 		if self.game_over:
@@ -757,6 +830,22 @@ class VoidRescuerGame(GameApplication):
 			print("█" * 60)
 			print(f"Final distance from singularity: {ship_distance:.1f} units")
 			print(f"Ship's thrust power was: {self.ship.thrust_power:.1f}")
+			print("="*60 + "\n")
+			# Hide ship by moving it far away
+			self.ship.position = Vector3(10000, 10000, 10000)
+			return
+		
+		# Check if fuel is depleted with unsaved astronauts
+		rescued_count = sum(1 for a in self.astronauts if a.is_rescued)
+		total_astronauts = len(self.astronauts)
+		
+		if self.ship.fuel <= 0 and rescued_count < total_astronauts:
+			self.game_over = True
+			print("\n" + "="*60)
+			print("█" * 60)
+			print("███  GAME OVER! OUT OF FUEL!  ███")
+			print("█" * 60)
+			print(f"Rescued: {rescued_count}/{total_astronauts}")
 			print("="*60 + "\n")
 			# Hide ship by moving it far away
 			self.ship.position = Vector3(10000, 10000, 10000)
@@ -809,9 +898,9 @@ class VoidRescuerGame(GameApplication):
 		for asteroid in self.asteroids:
 			asteroid.render()
 		
-		# Render HUD text (required power info)
+		# Render HUD text (required power info and game over message)
 		render_hud_text(self.window_width, self.window_height, self.ship, 
-		               self.astronauts, self.black_hole)
+		               self.astronauts, self.black_hole, self.game_over)
 		
 		glutSwapBuffers()
 
@@ -851,6 +940,11 @@ def keyboard_callback(key: bytes, x: int, y: int) -> None:
 		# Escape to quit
 		if key == b'\x1b':  # ESC
 			sys.exit(0)
+		
+		# R to reload game when game over
+		if key == b'r' and game.game_over:
+			game.reload_game()
+			return
 		
 		# Space to tether nearest astronaut
 		if key == b' ':
@@ -929,7 +1023,7 @@ def main() -> None:
 	# Initialize GLUT
 	glutInit()
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
-	glutInitWindowSize(1200, 800)
+	glutInitWindowSize(800, 600)
 	glutInitWindowPosition(100, 100)
 	glutCreateWindow(b"The Void Rescuer - Physics Demo")
 	
