@@ -248,7 +248,7 @@ class SpaceShip(Ship):
 		self.position = self.position + self.velocity * dt
 
 	def render(self) -> None:
-		"""Render the spaceship using OpenGL."""
+		"""Render the spaceship using OpenGL - Star Wars X-wing style."""
 		glPushMatrix()
 		
 		# Move to ship position
@@ -257,35 +257,84 @@ class SpaceShip(Ship):
 		# Rotate to heading
 		glRotatef(self.heading_degrees, 0, 0, 1)
 		
-		# Ship body (cylinder)
-		glColor3f(0.7, 0.7, 0.9)  # Light blue
+		# Main fuselage (elongated body)
+		glColor3f(0.85, 0.85, 0.90)  # Light gray/white
 		glPushMatrix()
-		glRotatef(-90, 1, 0, 0)  # Point cylinder forward
+		glRotatef(-90, 1, 0, 0)
 		quadric = gluNewQuadric()
-		gluCylinder(quadric, 8, 5, 30, 16, 16)  # Base radius, top radius, height
+		gluCylinder(quadric, 6, 4, 35, 16, 16)  # Long tapered body
 		gluDeleteQuadric(quadric)
 		glPopMatrix()
 		
-		# Left wing (cube)
-		glColor3f(0.5, 0.5, 0.8)
+		# Cockpit canopy (front sphere)
+		glColor3f(0.2, 0.3, 0.4)  # Dark blue-gray glass
 		glPushMatrix()
-		glTranslatef(-15, 0, -10)
-		glScalef(10, 2, 15)
+		glTranslatef(0, 0, 18)
+		glutSolidSphere(5, 12, 12)
+		glPopMatrix()
+		
+		# Nose cone
+		glColor3f(0.9, 0.3, 0.2)  # Red/orange nose
+		glPushMatrix()
+		glTranslatef(0, 0, 22)
+		glRotatef(-90, 1, 0, 0)
+		quadric = gluNewQuadric()
+		gluCylinder(quadric, 3, 0, 8, 12, 12)  # Cone shape
+		gluDeleteQuadric(quadric)
+		glPopMatrix()
+		
+		# Top-left wing (X-wing configuration)
+		glColor3f(0.75, 0.75, 0.80)
+		glPushMatrix()
+		glTranslatef(-12, 0, 0)
+		glRotatef(15, 0, 1, 0)  # Slight angle
+		glScalef(18, 1.5, 12)
 		glutSolidCube(1)
 		glPopMatrix()
 		
-		# Right wing (cube)
+		# Top-right wing
 		glPushMatrix()
-		glTranslatef(15, 0, -10)
-		glScalef(10, 2, 15)
+		glTranslatef(12, 0, 0)
+		glRotatef(-15, 0, 1, 0)
+		glScalef(18, 1.5, 12)
 		glutSolidCube(1)
 		glPopMatrix()
 		
-		# Cockpit (sphere)
-		glColor3f(0.3, 0.6, 0.9)
+		# Bottom-left wing
 		glPushMatrix()
-		glTranslatef(0, 0, 15)
-		glutSolidSphere(6, 16, 16)
+		glTranslatef(-12, 0, -5)
+		glRotatef(15, 0, 1, 0)
+		glScalef(18, 1.5, 12)
+		glutSolidCube(1)
+		glPopMatrix()
+		
+		# Bottom-right wing
+		glPushMatrix()
+		glTranslatef(12, 0, -5)
+		glRotatef(-15, 0, 1, 0)
+		glScalef(18, 1.5, 12)
+		glutSolidCube(1)
+		glPopMatrix()
+		
+		# Engine glow (left)
+		glColor3f(0.3, 0.6, 1.0)  # Blue engine glow
+		glPushMatrix()
+		glTranslatef(-12, 0, -15)
+		glutSolidSphere(3, 8, 8)
+		glPopMatrix()
+		
+		# Engine glow (right)
+		glPushMatrix()
+		glTranslatef(12, 0, -15)
+		glutSolidSphere(3, 8, 8)
+		glPopMatrix()
+		
+		# Rear stabilizer
+		glColor3f(0.8, 0.8, 0.85)
+		glPushMatrix()
+		glTranslatef(0, 0, -18)
+		glScalef(8, 12, 2)
+		glutSolidCube(1)
 		glPopMatrix()
 		
 		glPopMatrix()
