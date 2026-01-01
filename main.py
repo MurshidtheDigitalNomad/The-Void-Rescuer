@@ -842,6 +842,15 @@ class VoidRescuerGame(GameApplication):
 		for asteroid in self.asteroids:
 			asteroid.update(dt)
 		
+		# Mark astronauts as saved if they're 500+ units away from black hole
+		for astronaut in self.astronauts:
+			if not astronaut.is_rescued:
+				distance_from_black_hole = (astronaut.position - self.black_hole.position).magnitude()
+				if distance_from_black_hole >= 500.0:
+					astronaut.is_rescued = True
+					astronaut.detach_tether()
+					print(f"✓ Astronaut Escaped! Distance from black hole: {distance_from_black_hole:.1f}")
+		
 		# Calculate distance from black hole
 		ship_distance = (self.ship.position - self.black_hole.position).magnitude()
 		
