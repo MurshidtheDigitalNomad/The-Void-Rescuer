@@ -9,9 +9,19 @@ details yet.
 from __future__ import annotations
 
 import math
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from typing import Iterable, Optional, List
+
+try:
+	from OpenGL.GL import *
+	from OpenGL.GLU import *
+	from OpenGL.GLUT import *
+except ImportError:
+	raise ImportError(
+		"PyOpenGL not found. Install with: pip install PyOpenGL"
+	)
 
 
 @dataclass
@@ -238,8 +248,47 @@ class SpaceShip(Ship):
 		self.position = self.position + self.velocity * dt
 
 	def render(self) -> None:
-		"""Placeholder for OpenGL rendering."""
-		pass
+		"""Render the spaceship using OpenGL."""
+		glPushMatrix()
+		
+		# Move to ship position
+		glTranslatef(self.position.x, self.position.y, self.position.z)
+		
+		# Rotate to heading
+		glRotatef(self.heading_degrees, 0, 0, 1)
+		
+		# Ship body (cylinder)
+		glColor3f(0.7, 0.7, 0.9)  # Light blue
+		glPushMatrix()
+		glRotatef(-90, 1, 0, 0)  # Point cylinder forward
+		quadric = gluNewQuadric()
+		gluCylinder(quadric, 8, 5, 30, 16, 16)  # Base radius, top radius, height
+		gluDeleteQuadric(quadric)
+		glPopMatrix()
+		
+		# Left wing (cube)
+		glColor3f(0.5, 0.5, 0.8)
+		glPushMatrix()
+		glTranslatef(-15, 0, -10)
+		glScalef(10, 2, 15)
+		glutSolidCube(1)
+		glPopMatrix()
+		
+		# Right wing (cube)
+		glPushMatrix()
+		glTranslatef(15, 0, -10)
+		glScalef(10, 2, 15)
+		glutSolidCube(1)
+		glPopMatrix()
+		
+		# Cockpit (sphere)
+		glColor3f(0.3, 0.6, 0.9)
+		glPushMatrix()
+		glTranslatef(0, 0, 15)
+		glutSolidSphere(6, 16, 16)
+		glPopMatrix()
+		
+		glPopMatrix()
 
 
 class SpaceAstronaut(Astronaut):
@@ -260,6 +309,7 @@ class SpaceAstronaut(Astronaut):
 		self.gravity_source: Optional[GravitySource] = None
 		self.tether_max_distance = 500.0
 		self.tether_pull_speed = 0.3
+		self.float_offset = 0.0  # For floating animation
 
 	def attach_tether(self, ship: Ship) -> None:
 		"""Link this astronaut to a ship."""
@@ -315,10 +365,40 @@ class SpaceAstronaut(Astronaut):
 
 		# Update position
 		self.position = self.position + self.velocity * dt
+		
+		# Update floating animation
+		self.float_offset += dt * 2.0  # Animation speed
 
 	def render(self) -> None:
-		"""Placeholder for OpenGL rendering."""
-		pass
+		"""Render the astronaut with floating animation."""
+		glPushMatrix()
+		
+		# Move to astronaut position
+		float_wave = math.sin(self.float_offset) * 5.0  # Bobbing motion
+		glTranslatef(self.position.x, self.position.y, self.position.z + float_wave)
+		
+		# Helmet (sphere)
+		glColor3f(0.9, 0.9, 1.0)  # White-ish helmet
+		glPushMatrix()
+		glutSolidSphere(8, 16, 16)
+		glPopMatrix()
+		
+		# Visor (cyan sphere, slightly smaller and forward)
+		glColor3f(0.0, 1.0, 1.0)  # Cyan
+		glPushMatrix()
+		glTranslatef(0, 5, 0)
+		glutSolidSphere(4, 12, 12)
+		glPopMatrix()
+		
+		# Life Support Pack (cube behind)
+		glColor3f(0.6, 0.6, 0.6)  # Gray backpack
+		glPushMatrix()
+		glTranslatef(0, -6, 0)
+		glScalef(1.2, 1.5, 0.5)  # Flat backpack shape
+		glutSolidCube(8)
+		glPopMatrix()
+		
+		glPopMatrix()
 
 
 class SpaceAsteroid(Asteroid):
@@ -354,6 +434,33 @@ class SpaceAsteroid(Asteroid):
 	def render(self) -> None:
 		"""Placeholder for OpenGL rendering."""
 		pass
+
+
+def render_tether_beam(ship: SpaceShip, astronaut: SpaceAstronaut, time_value: float) -> None:
+	"""
+	Render pulsing tether beam between ship and astronaut.
+	"""
+	if not astronaut.tethered_to:
+		return
+	
+	# Pulsing effect using sine wave
+	pulse = (math.sin(time_value * 5.0) + 1.0) * 0.5  # Oscillates 0 to 1
+	brightness = 0.5 + pulse * 0.5  # 0.5 to 1.0
+	
+	# Line width pulsing
+	line_width = 2.0 + pulse * 2.0  # 2 to 4
+	glLineWidth(line_width)
+	
+	# Draw beam
+	glBegin(GL_LINES)
+	glColor3f(0.0, brightness, brightness)  # Cyan beam
+	glVertex3f(ship.position.x, ship.position.y, ship.position.z)
+	glColor3f(0.0, brightness * 0.5, brightness * 0.5)  # Fade at astronaut
+	glVertex3f(astronaut.position.x, astronaut.position.y, astronaut.position.z)
+	glEnd()
+	
+	# Reset line width
+	glLineWidth(1.0)
 
 
 class InputController:
@@ -393,10 +500,273 @@ class InputController:
 			self.ship.apply_thrust(-0.5)  # Backward (slower)
 
 
+# =========================================================================
+# GAME APPLICATION & GLUT SETUP
+# =========================================================================
+
+
+class VoidRescuerGame(GameApplication):
+	"""
+	Main game application with OpenGL/GLUT rendering.
+	"""
+
+	def __init__(self):
+		self.window_width = 1200
+		self.window_height = 800
+		self.game_over = False
+		self.last_time = time.time()
+		self.current_time = 0.0
+		
+		# Game objects
+		self.black_hole: Optional[BlackHole] = None
+		self.ship: Optional[SpaceShip] = None
+		self.astronauts: List[SpaceAstronaut] = []
+		self.asteroids: List[SpaceAsteroid] = []
+		self.input_controller: Optional[InputController] = None
+
+	def initialize(self) -> None:
+		"""Set up OpenGL state and initialize game objects."""
+		# OpenGL setup
+		glClearColor(0.0, 0.0, 0.05, 1.0)  # Dark blue space background
+		glEnable(GL_DEPTH_TEST)
+		glEnable(GL_LIGHTING)
+		glEnable(GL_LIGHT0)
+		glEnable(GL_COLOR_MATERIAL)
+		glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+		
+		# Lighting setup
+		glLightfv(GL_LIGHT0, GL_POSITION, [500, 500, 500, 1])
+		glLightfv(GL_LIGHT0, GL_AMBIENT, [0.3, 0.3, 0.3, 1])
+		glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.8, 0.8, 0.8, 1])
+		
+		# Projection setup
+		glMatrixMode(GL_PROJECTION)
+		glLoadIdentity()
+		gluPerspective(45, self.window_width / self.window_height, 1, 3000)
+		glMatrixMode(GL_MODELVIEW)
+		
+		# Create game objects
+		self.black_hole = BlackHole(strength=50000.0, event_horizon=150.0)
+		self.ship = SpaceShip(position=Vector3(400, 0, 0))
+		self.ship.gravity_source = self.black_hole
+		
+		# Create test astronauts
+		for angle in [45, 135, 225, 315]:
+			rad = math.radians(angle)
+			pos = Vector3(math.cos(rad) * 300, math.sin(rad) * 300, 0)
+			astronaut = SpaceAstronaut(position=pos)
+			astronaut.gravity_source = self.black_hole
+			self.astronauts.append(astronaut)
+		
+		# Create test asteroids
+		for angle in [0, 90, 180, 270]:
+			rad = math.radians(angle)
+			pos = Vector3(math.cos(rad) * 250, math.sin(rad) * 250, 0)
+			asteroid = SpaceAsteroid(position=pos)
+			asteroid.gravity_source = self.black_hole
+			self.asteroids.append(asteroid)
+		
+		self.input_controller = InputController(self.ship)
+
+	def step(self, dt: float) -> None:
+		"""Single frame update including input, simulation, and rendering."""
+		if self.game_over:
+			return
+		
+		# Update current time for animations
+		self.current_time += dt
+		
+		# Process input
+		if self.input_controller:
+			self.input_controller.update(dt)
+		
+		# Update physics
+		self.ship.update(dt)
+		for astronaut in self.astronauts:
+			astronaut.update(dt)
+		for asteroid in self.asteroids:
+			asteroid.update(dt)
+		
+		# Check event horizon
+		if self.black_hole.is_inside_event_horizon(self.ship.position):
+			self.game_over = True
+			print("GAME OVER! Ship crossed the event horizon!")
+		
+		# Render
+		self.render()
+
+	def render(self) -> None:
+		"""Render the scene."""
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+		glLoadIdentity()
+		
+		# Camera setup - follow ship from behind and above
+		if self.ship:
+			angle_rad = math.radians(self.ship.heading_degrees)
+			cam_distance = 200
+			cam_x = self.ship.position.x - cam_distance * math.cos(angle_rad)
+			cam_y = self.ship.position.y - cam_distance * math.sin(angle_rad)
+			cam_z = self.ship.position.z + 100
+			
+			gluLookAt(
+				cam_x, cam_y, cam_z,  # Camera position
+				self.ship.position.x, self.ship.position.y, self.ship.position.z,  # Look at ship
+				0, 0, 1  # Up vector
+			)
+		
+		# Draw black hole (simple marker for now)
+		glPushMatrix()
+		glColor3f(0.2, 0.0, 0.2)  # Dark purple
+		glutSolidSphere(self.black_hole.event_horizon, 32, 32)
+		glPopMatrix()
+		
+		# Draw ship
+		if self.ship:
+			self.ship.render()
+		
+		# Draw astronauts and tethers
+		for astronaut in self.astronauts:
+			if astronaut.tethered_to:
+				render_tether_beam(self.ship, astronaut, self.current_time)
+			astronaut.render()
+		
+		# Draw asteroids
+		for asteroid in self.asteroids:
+			asteroid.render()
+		
+		glutSwapBuffers()
+
+	def shutdown(self) -> None:
+		"""Release resources and exit cleanly."""
+		print("Shutting down...")
+
+
+# Global game instance for GLUT callbacks
+game: Optional[VoidRescuerGame] = None
+
+
+def display_callback() -> None:
+	"""GLUT display callback."""
+	if game:
+		game.render()
+
+
+def timer_callback(value: int) -> None:
+	"""GLUT timer callback for game loop."""
+	if game and not game.game_over:
+		current = time.time()
+		dt = current - game.last_time
+		game.last_time = current
+		
+		game.step(dt)
+		glutPostRedisplay()
+		glutTimerFunc(16, timer_callback, 0)  # ~60 FPS
+
+
+def keyboard_callback(key: bytes, x: int, y: int) -> None:
+	"""GLUT keyboard down callback."""
+	if game and game.input_controller:
+		key_str = key.decode('utf-8').lower()
+		game.input_controller.key_down(key_str)
+		
+		# Escape to quit
+		if key == b'\x1b':  # ESC
+			sys.exit(0)
+		
+		# Space to tether nearest astronaut
+		if key == b' ':
+			nearest = None
+			min_dist = float('inf')
+			for astronaut in game.astronauts:
+				if not astronaut.is_rescued:
+					dist = (astronaut.position - game.ship.position).magnitude()
+					if dist < min_dist and dist < 200:  # Within 200 units
+						min_dist = dist
+						nearest = astronaut
+			
+			if nearest:
+				if nearest.tethered_to:
+					nearest.detach_tether()
+					print("Tether released")
+				else:
+					nearest.attach_tether(game.ship)
+					print(f"Tethered! Distance: {min_dist:.1f}")
+
+
+def keyboard_up_callback(key: bytes, x: int, y: int) -> None:
+	"""GLUT keyboard up callback."""
+	if game and game.input_controller:
+		key_str = key.decode('utf-8').lower()
+		game.input_controller.key_up(key_str)
+
+
+def special_callback(key: int, x: int, y: int) -> None:
+	"""GLUT special key down callback (arrow keys)."""
+	if game and game.input_controller:
+		if key == GLUT_KEY_LEFT:
+			game.input_controller.key_down('left')
+		elif key == GLUT_KEY_RIGHT:
+			game.input_controller.key_down('right')
+		elif key == GLUT_KEY_UP:
+			game.input_controller.key_down('up')
+		elif key == GLUT_KEY_DOWN:
+			game.input_controller.key_down('down')
+
+
+def special_up_callback(key: int, x: int, y: int) -> None:
+	"""GLUT special key up callback (arrow keys)."""
+	if game and game.input_controller:
+		if key == GLUT_KEY_LEFT:
+			game.input_controller.key_up('left')
+		elif key == GLUT_KEY_RIGHT:
+			game.input_controller.key_up('right')
+		elif key == GLUT_KEY_UP:
+			game.input_controller.key_up('up')
+		elif key == GLUT_KEY_DOWN:
+			game.input_controller.key_up('down')
+
+
 def main() -> None:
-	"""Entry point placeholder; wire to GLUT/pygame later."""
-	raise SystemExit("Game loop not initialized yet.")
+	"""Entry point - initialize GLUT and start game loop."""
+	global game
+	
+	print("="*60)
+	print("THE VOID RESCUER - Member 1: Physics & Movement Demo")
+	print("="*60)
+	print("\nControls:")
+	print("  W/Up Arrow    - Forward thrust")
+	print("  S/Down Arrow  - Backward thrust")
+	print("  A/Left Arrow  - Rotate left")
+	print("  D/Right Arrow - Rotate right")
+	print("  SPACE         - Tether/untether nearest astronaut")
+	print("  ESC           - Quit")
+	print("\nObjective: Test physics and tethering!")
+	print("="*60)
+	print()
+	
+	# Initialize GLUT
+	glutInit()
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
+	glutInitWindowSize(1200, 800)
+	glutInitWindowPosition(100, 100)
+	glutCreateWindow(b"The Void Rescuer - Physics Demo")
+	
+	# Create and initialize game
+	game = VoidRescuerGame()
+	game.initialize()
+	
+	# Register callbacks
+	glutDisplayFunc(display_callback)
+	glutKeyboardFunc(keyboard_callback)
+	glutKeyboardUpFunc(keyboard_up_callback)
+	glutSpecialFunc(special_callback)
+	glutSpecialUpFunc(special_up_callback)
+	glutTimerFunc(16, timer_callback, 0)
+	
+	# Start game loop
+	glutMainLoop()
 
 
 if __name__ == "__main__":
+	import sys
 	main()
