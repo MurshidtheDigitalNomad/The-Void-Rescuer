@@ -8,8 +8,9 @@ details yet.
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
 
@@ -141,6 +142,255 @@ class GameApplication(ABC):
 	@abstractmethod
 	def shutdown(self) -> None:
 		"""Release resources and exit cleanly."""
+
+
+# =========================================================================
+# CONCRETE IMPLEMENTATIONS - Member 1: Physics & Movement
+# =========================================================================
+
+
+class BlackHole(GravitySource):
+	"""
+	Singularity at (0,0,0) that pulls objects using inverse-square law.
+	"""
+
+	def __init__(self, strength: float = 50000.0, event_horizon: float = 150.0):
+		self.position = Vector3(0, 0, 0)
+		self.strength = strength
+		self.event_horizon = event_horizon
+
+	def force_at(self, position: Vector3) -> Vector3:
+		"""
+		Calculate gravitational force using inverse-square law.
+		F = G * M / r^2, directed toward center.
+		"""
+		delta = self.position - position
+		distance = delta.magnitude()
+
+		if distance < 1.0:  # Prevent division by zero
+			distance = 1.0
+
+		# Inverse square law: force magnitude
+		force_magnitude = self.strength / (distance * distance)
+
+		# Direction toward black hole (normalized)
+		direction = delta.normalized()
+
+		return direction * force_magnitude
+
+	def is_inside_event_horizon(self, position: Vector3) -> bool:
+		"""Check if position has crossed the event horizon (game over)."""
+		distance = (position - self.position).magnitude()
+		return distance < self.event_horizon
+
+
+class SpaceShip(Ship):
+	"""
+	Player-controlled ship with thrust, rotation, and gravity effects.
+	"""
+
+	def __init__(
+		self,
+		position: Vector3 = Vector3(400, 0, 0),
+		heading_degrees: float = 180.0,
+		mass: float = 10.0,
+	):
+		self.position = position
+		self.velocity = Vector3()
+		self.heading_degrees = heading_degrees
+		self.mass = mass
+		self.thrust_power = 50.0
+		self.drag_coefficient = 0.98  # Natural slowdown
+		self.gravity_source: Optional[GravitySource] = None
+
+	def apply_thrust(self, amount: float) -> None:
+		"""
+		Accelerate along current heading.
+		Using bullet movement math: speed * cos(theta), speed * sin(theta)
+		"""
+		angle_rad = math.radians(self.heading_degrees)
+		thrust_x = amount * self.thrust_power * math.cos(angle_rad)
+		thrust_y = amount * self.thrust_power * math.sin(angle_rad)
+
+		acceleration = Vector3(thrust_x, thrust_y, 0) * (1.0 / self.mass)
+		self.velocity = self.velocity + acceleration
+
+	def rotate(self, delta_degrees: float) -> None:
+		"""Adjust heading based on input."""
+		self.heading_degrees += delta_degrees
+		# Keep angle in [0, 360)
+		self.heading_degrees %= 360
+
+	def integrate(self, dt: float) -> None:
+		"""
+		Update position based on velocity and apply gravity + drag.
+		"""
+		# Apply gravity force if source exists
+		if self.gravity_source:
+			gravity_force = self.gravity_source.force_at(self.position)
+			acceleration = gravity_force * (1.0 / self.mass)
+			self.velocity = self.velocity + acceleration * dt
+
+		# Apply drag (natural slowdown)
+		self.velocity = self.velocity * self.drag_coefficient
+
+		# Update position
+		self.position = self.position + self.velocity * dt
+
+	def render(self) -> None:
+		"""Placeholder for OpenGL rendering."""
+		pass
+
+
+class SpaceAstronaut(Astronaut):
+	"""
+	Stranded astronaut that can be tethered and rescued.
+	"""
+
+	def __init__(
+		self,
+		position: Vector3,
+		mass: float = 5.0,
+	):
+		self.position = position
+		self.velocity = Vector3()
+		self.mass = mass
+		self.is_rescued = False
+		self.tethered_to: Optional[Ship] = None
+		self.gravity_source: Optional[GravitySource] = None
+		self.tether_max_distance = 500.0
+		self.tether_pull_speed = 0.3
+
+	def attach_tether(self, ship: Ship) -> None:
+		"""Link this astronaut to a ship."""
+		self.tethered_to = ship
+
+	def detach_tether(self) -> None:
+		"""Remove tether link."""
+		self.tethered_to = None
+
+	def update_tether(self, dt: float) -> None:
+		"""
+		Move astronaut toward tethered ship.
+		Uses unit vector and ship's speed for smooth following.
+		"""
+		if not self.tethered_to:
+			return
+
+		# Calculate direction from astronaut to ship
+		direction = self.tethered_to.position - self.position
+		distance = direction.magnitude()
+
+		# Check if tether should snap
+		if distance > self.tether_max_distance:
+			self.detach_tether()
+			return
+
+		# Normalize direction to get unit vector
+		if distance > 0.1:
+			unit_direction = direction.normalized()
+
+			# Pull astronaut toward ship
+			# Speed is proportional to distance and ship's velocity
+			pull_speed = distance * self.tether_pull_speed
+			if hasattr(self.tethered_to, 'velocity'):
+				ship_speed = self.tethered_to.velocity.magnitude()
+				pull_speed += ship_speed * 0.5
+
+			self.velocity = unit_direction * pull_speed
+
+	def integrate(self, dt: float) -> None:
+		"""
+		Update position based on velocity and apply gravity.
+		"""
+		# Apply gravity force if source exists
+		if self.gravity_source:
+			gravity_force = self.gravity_source.force_at(self.position)
+			acceleration = gravity_force * (1.0 / self.mass)
+			self.velocity = self.velocity + acceleration * dt
+
+		# If tethered, update tether movement
+		if self.tethered_to:
+			self.update_tether(dt)
+
+		# Update position
+		self.position = self.position + self.velocity * dt
+
+	def render(self) -> None:
+		"""Placeholder for OpenGL rendering."""
+		pass
+
+
+class SpaceAsteroid(Asteroid):
+	"""
+	Orbiting asteroid obstacle.
+	"""
+
+	def __init__(
+		self,
+		position: Vector3,
+		radius: float = 20.0,
+		mass: float = 15.0,
+	):
+		self.position = position
+		self.velocity = Vector3()
+		self.radius = radius
+		self.mass = mass
+		self.gravity_source: Optional[GravitySource] = None
+
+	def integrate(self, dt: float) -> None:
+		"""
+		Update position based on velocity and apply gravity.
+		"""
+		# Apply gravity force if source exists
+		if self.gravity_source:
+			gravity_force = self.gravity_source.force_at(self.position)
+			acceleration = gravity_force * (1.0 / self.mass)
+			self.velocity = self.velocity + acceleration * dt
+
+		# Update position
+		self.position = self.position + self.velocity * dt
+
+	def render(self) -> None:
+		"""Placeholder for OpenGL rendering."""
+		pass
+
+
+class InputController:
+	"""
+	Handles keyboard input for ship control.
+	"""
+
+	def __init__(self, ship: SpaceShip):
+		self.ship = ship
+		self.keys_pressed = set()
+
+	def key_down(self, key: str) -> None:
+		"""Register key press."""
+		self.keys_pressed.add(key.lower())
+
+	def key_up(self, key: str) -> None:
+		"""Register key release."""
+		self.keys_pressed.discard(key.lower())
+
+	def update(self, dt: float) -> None:
+		"""
+		Process input and update ship accordingly.
+		WASD for movement, Arrow keys for rotation.
+		"""
+		# Rotation (Arrow keys or A/D)
+		if 'left' in self.keys_pressed or 'a' in self.keys_pressed:
+			self.ship.rotate(5.0)
+
+		if 'right' in self.keys_pressed or 'd' in self.keys_pressed:
+			self.ship.rotate(-5.0)
+
+		# Thrust (WASD or Arrow keys)
+		if 'w' in self.keys_pressed or 'up' in self.keys_pressed:
+			self.ship.apply_thrust(1.0)  # Forward
+
+		if 's' in self.keys_pressed or 'down' in self.keys_pressed:
+			self.ship.apply_thrust(-0.5)  # Backward (slower)
 
 
 def main() -> None:
