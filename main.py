@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import time
 import sys
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Iterable, Optional, List
@@ -214,7 +215,8 @@ class BlackHole(GravitySource):
 
 		# Inverse square law with stronger pull very close to singularity
 		# Force increases dramatically as distance decreases
-		force_magnitude = self.strength / (distance * distance)
+		# Increase pull strength (global multiplier x5)
+		force_magnitude = (self.strength / (distance * distance)) * 5.0
 		
 		# Add exponential factor for extreme pull near event horizon
 		if distance < 200:
@@ -441,13 +443,6 @@ class SpaceAstronaut(Astronaut):
 		direction = self.tethered_to.position - self.position
 		distance = direction.magnitude()
 
-		# Check if astronaut reached the ship (rescued)
-		if distance < 20.0:
-			self.is_rescued = True
-			self.detach_tether()
-			print(f"[OK] Astronaut Rescued! Total rescued: {self.is_rescued}")
-			return
-
 		# Check if tether should snap
 		if distance > self.tether_max_distance:
 			self.detach_tether()
@@ -536,17 +531,25 @@ class SpaceAsteroid(Asteroid):
 		position: Vector3,
 		radius: float = 20.0,
 		mass: float = 15.0,
+		scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+		rotation_axis: Vector3 = Vector3(0, 0, 1),
+		rotation_speed: float = 0.0,  # degrees per second
 	):
 		self.position = position
 		self.velocity = Vector3()
 		self.radius = radius
-		self.collision_radius = radius  # Use radius for collision
+		self.scale = scale
+		self.rotation_axis = rotation_axis
+		self.rotation_speed = rotation_speed
+		self.rotation_angle = 0.0
 		self.mass = mass
 		self.gravity_source: Optional[GravitySource] = None
+		# Collision radius based on largest scale to keep detection fair
+		self.collision_radius = radius * max(scale)
 
 	def integrate(self, dt: float) -> None:
 		"""
-		Update position based on velocity and apply gravity.
+		Update position based on velocity, apply gravity, and spin.
 		"""
 		# Apply gravity force if source exists
 		if self.gravity_source:
@@ -557,9 +560,18 @@ class SpaceAsteroid(Asteroid):
 		# Update position
 		self.position = self.position + self.velocity * dt
 
+		# Spin the asteroid
+		self.rotation_angle = (self.rotation_angle + self.rotation_speed * dt) % 360.0
+
 	def render(self) -> None:
-		"""Placeholder for OpenGL rendering."""
-		pass
+		"""Render asteroid as an irregular gray rock."""
+		glPushMatrix()
+		glTranslatef(self.position.x, self.position.y, self.position.z)
+		glRotatef(self.rotation_angle, self.rotation_axis.x, self.rotation_axis.y, self.rotation_axis.z)
+		glScalef(self.scale[0], self.scale[1], self.scale[2])
+		glColor3f(0.55, 0.55, 0.55)  # Medium gray
+		glutSolidSphere(self.radius, 14, 14)
+		glPopMatrix()
 
 
 def render_tether_beam(ship: SpaceShip, astronaut: SpaceAstronaut, time_value: float) -> None:
@@ -597,10 +609,9 @@ def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3,
 	gravity_force = black_hole.force_at(astronaut_position)
 	force_magnitude = gravity_force.magnitude()
 	
-	# Convert gravity force to required power
-	# Power needed = force_magnitude * scaling_factor to match thrust power units
-	# Scale so it aligns with thrust_power range (20-300)
-	required_power = force_magnitude * 10.0  # Direct scaling of force to power units
+	# Convert gravity force to required power and add a 20-point safety margin
+	# Power needed = gravity pull converted to thrust units + 20 to overcome pull
+	required_power = force_magnitude * 10.0 + 20.0
 	return required_power
 
 
@@ -636,7 +647,7 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	# Disable depth testing for HUD
 	glDisable(GL_DEPTH_TEST)
 	
-	# Always display current power
+	# Always display current power (will be recolored below if comparing)
 	glColor3f(0.2, 1.0, 0.2)  # Bright green
 	glRasterPos2f(15, 25)
 	text = f"Current Power: {ship.thrust_power:.1f}"
@@ -668,19 +679,25 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	if nearest_astronaut and min_distance < 500:
 		required_power = calculate_required_power(black_hole, nearest_astronaut.position)
 		current_power = ship.thrust_power
+		ratio = current_power / required_power if required_power > 0 else 0
 		
-		# Color based on whether power is sufficient
+		# Color based on whether power is sufficient (needs +20 margin baked into required)
 		if current_power >= required_power:
 			glColor3f(0.0, 1.0, 0.0)  # Green - sufficient power
 		else:
 			glColor3f(1.0, 0.0, 0.0)  # Red - insufficient power
 		
 		glRasterPos2f(15, 100)
-		text = f"Required Power: {required_power:.1f}"
+		text = f"Required Power: {required_power:.1f} (gravity+20)"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glRasterPos2f(15, 125)
+		text = f"Current Power: {current_power:.1f} ({ratio:.2f}x req)"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
+		
+		glRasterPos2f(15, 150)
 		text = f"Distance to Astronaut: {min_distance:.1f}"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
@@ -800,7 +817,7 @@ class VoidRescuerGame(GameApplication):
 	Main game application with OpenGL/GLUT rendering.
 	"""
 
-	def __init__(self):
+	def __init__(self, difficulty: str = "medium"):
 		self.window_width = 1200
 		self.window_height = 800
 		self.game_over = False
@@ -811,6 +828,12 @@ class VoidRescuerGame(GameApplication):
 		self.last_time = time.time()
 		self.current_time = 0.0
 		self.ship_destroyed = False  # Track if ship was destroyed
+		self.difficulty = difficulty  # Game difficulty level
+		self.station_position = Vector3(800, 0, 0)  # Rescue station location
+		self.station_half_size = 40.0  # Square half-size (80x80 pad)
+		self.station_rescue_radius = 100.0  # Rescue radius around station center
+		self.difficulty_order = ["easy", "medium", "hard"]
+		self.level_index = max(0, self.difficulty_order.index(difficulty)) if difficulty in self.difficulty_order else 1
 		
 		# Game objects
 		self.black_hole: Optional[BlackHole] = None
@@ -819,6 +842,40 @@ class VoidRescuerGame(GameApplication):
 		self.asteroids: List[SpaceAsteroid] = []
 		self.input_controller: Optional[InputController] = None
 		self.star_field: Optional[StarField] = None  # Background stars
+		
+		# Difficulty settings
+		self.difficulty_settings = {
+			"easy": {
+				"num_astronauts": 4,
+				"num_asteroids": 5,
+				"fuel_consumption": 0.03,
+				"thrust_power": 120.0,
+				"initial_fuel": 1500.0
+			},
+			"medium": {
+				"num_astronauts": 6,
+				"num_asteroids": 9,
+				"fuel_consumption": 0.05,
+				"thrust_power": 100.0,
+				"initial_fuel": 1000.0
+			},
+			"hard": {
+				"num_astronauts": 10,
+				"num_asteroids": 15,
+				"fuel_consumption": 0.08,
+				"thrust_power": 80.0,
+				"initial_fuel": 800.0
+			}
+		}
+		
+		self.current_settings = self.difficulty_settings.get(difficulty, self.difficulty_settings["medium"])
+
+	def _set_difficulty(self, difficulty: str) -> None:
+		"""Update difficulty and current settings safely."""
+		self.difficulty = difficulty if difficulty in self.difficulty_settings else "medium"
+		self.current_settings = self.difficulty_settings.get(self.difficulty, self.difficulty_settings["medium"])
+		if self.difficulty in self.difficulty_order:
+			self.level_index = self.difficulty_order.index(self.difficulty)
 
 	def initialize(self) -> None:
 		"""Set up OpenGL state and initialize game objects."""
@@ -847,23 +904,75 @@ class VoidRescuerGame(GameApplication):
 		self.ship = SpaceShip(position=Vector3(400, 0, 0))
 		self.ship.gravity_source = self.black_hole
 		
-		# Create test astronauts
-		for angle in [45, 135, 225, 315]:
+		# Apply difficulty settings to ship
+		self.ship.fuel = self.current_settings["initial_fuel"]
+		self.ship.fuel_max = self.current_settings["initial_fuel"]
+		self.ship.fuel_consumption_rate = self.current_settings["fuel_consumption"]
+		self.ship.thrust_power = self.current_settings["thrust_power"]
+		
+		# Create astronauts based on difficulty
+		num_astronauts = self.current_settings["num_astronauts"]
+		angle_step = 360.0 / num_astronauts
+		spawn_radius = 420.0  # Keep astronauts ≥400 units from the black hole
+		for i in range(num_astronauts):
+			angle = i * angle_step
 			rad = math.radians(angle)
-			pos = Vector3(math.cos(rad) * 300, math.sin(rad) * 300, 0)
+			pos = Vector3(math.cos(rad) * spawn_radius, math.sin(rad) * spawn_radius, 0)
 			astronaut = SpaceAstronaut(position=pos)
 			astronaut.gravity_source = self.black_hole
 			self.astronauts.append(astronaut)
 		
-		# Create test asteroids
-		for angle in [0, 90, 180, 270]:
-			rad = math.radians(angle)
-			pos = Vector3(math.cos(rad) * 250, math.sin(rad) * 250, 0)
-			asteroid = SpaceAsteroid(position=pos)
-			asteroid.gravity_source = self.black_hole
+		# Create asteroids based on difficulty
+		num_asteroids = self.current_settings["num_asteroids"]
+		for _ in range(num_asteroids):
+			asteroid = self._create_random_asteroid()
 			self.asteroids.append(asteroid)
 		
 		self.input_controller = InputController(self.ship)
+		
+		# Print difficulty info
+		print(f"\n[DIFFICULTY: {self.difficulty.upper()}]")
+		print(f"  Astronauts: {num_astronauts}")
+		print(f"  Asteroids: {num_asteroids}")
+		print(f"  Initial Fuel: {self.current_settings['initial_fuel']}")
+		print(f"  Fuel Consumption: {self.current_settings['fuel_consumption']}")
+		print(f"  Thrust Power: {self.current_settings['thrust_power']}")
+		print()
+
+	def _create_random_asteroid(self) -> SpaceAsteroid:
+		"""Generate a random asteroid position, size, and shape."""
+		distance = random.uniform(180.0, 380.0)
+		angle_deg = random.uniform(0.0, 360.0)
+		angle_rad = math.radians(angle_deg)
+		pos = Vector3(
+			math.cos(angle_rad) * distance,
+			math.sin(angle_rad) * distance,
+			random.uniform(-30.0, 30.0),  # Slight Z variation
+		)
+		base_radius = random.uniform(12.0, 28.0)
+		scale = (
+			random.uniform(0.8, 1.4),
+			random.uniform(0.8, 1.4),
+			random.uniform(0.7, 1.3),
+		)
+		axis = Vector3(
+			random.uniform(-1.0, 1.0),
+			random.uniform(-1.0, 1.0),
+			random.uniform(-1.0, 1.0),
+		)
+		if axis.magnitude() < 0.1:
+			axis = Vector3(0, 0, 1)
+		rotation_speed = random.uniform(-35.0, 35.0)
+		asteroid = SpaceAsteroid(
+			position=pos,
+			radius=base_radius,
+			mass=15.0,
+			scale=scale,
+			rotation_axis=axis.normalized(),
+			rotation_speed=rotation_speed,
+		)
+		asteroid.gravity_source = self.black_hole
+		return asteroid
 
 	def reload_game(self) -> None:
 		"""Reset the game to initial state."""
@@ -875,27 +984,36 @@ class VoidRescuerGame(GameApplication):
 		self.ship_destroyed = False
 		self.current_time = 0.0
 		self.last_time = time.time()
+		self.station_position = Vector3(500, 0, 0)
 		
 		# Reset ship
 		self.ship = SpaceShip(position=Vector3(400, 0, 0))
 		self.ship.gravity_source = self.black_hole
 		
-		# Reset astronauts
+		# Apply difficulty settings to ship
+		self.ship.fuel = self.current_settings["initial_fuel"]
+		self.ship.fuel_max = self.current_settings["initial_fuel"]
+		self.ship.fuel_consumption_rate = self.current_settings["fuel_consumption"]
+		self.ship.thrust_power = self.current_settings["thrust_power"]
+		
+		# Reset astronauts based on difficulty
 		self.astronauts = []
-		for angle in [45, 135, 225, 315]:
+		num_astronauts = self.current_settings["num_astronauts"]
+		angle_step = 360.0 / num_astronauts
+		spawn_radius = 420.0  # Keep astronauts ≥400 units from the black hole
+		for i in range(num_astronauts):
+			angle = i * angle_step
 			rad = math.radians(angle)
-			pos = Vector3(math.cos(rad) * 300, math.sin(rad) * 300, 0)
+			pos = Vector3(math.cos(rad) * spawn_radius, math.sin(rad) * spawn_radius, 0)
 			astronaut = SpaceAstronaut(position=pos)
 			astronaut.gravity_source = self.black_hole
 			self.astronauts.append(astronaut)
 		
-		# Reset asteroids
+		# Reset asteroids based on difficulty
 		self.asteroids = []
-		for angle in [0, 90, 180, 270]:
-			rad = math.radians(angle)
-			pos = Vector3(math.cos(rad) * 250, math.sin(rad) * 250, 0)
-			asteroid = SpaceAsteroid(position=pos)
-			asteroid.gravity_source = self.black_hole
+		num_asteroids = self.current_settings["num_asteroids"]
+		for _ in range(num_asteroids):
+			asteroid = self._create_random_asteroid()
 			self.asteroids.append(asteroid)
 		
 		self.input_controller = InputController(self.ship)
@@ -903,34 +1021,22 @@ class VoidRescuerGame(GameApplication):
 
 	def check_collisions(self) -> None:
 		"""Check for collisions between game objects."""
-		# Ship-Asteroid collisions
+		# Ship-Asteroid collisions - GAME OVER
 		for asteroid in self.asteroids:
 			distance = (self.ship.position - asteroid.position).magnitude() # type: ignore 
 			if distance < (self.ship.collision_radius + asteroid.collision_radius): # type: ignore
-				# Collision detected - damage ship
-				self.ship.fuel = max(0, self.ship.fuel - 50.0) # type: ignore
-				print("\n[WARNING] COLLISION! Ship hit asteroid! -50 Fuel!\n")
-				if self.ship.fuel <= 0: # type: ignore
-					self.game_over = True
-					self.game_over_reason = "SHIP DESTROYED BY ASTEROID!"
-					print("\n" + "="*60)
-					print("#" * 60)
-					print("###  GAME OVER! " + self.game_over_reason + "  ###")
-					print("#" * 60)
-					print("="*60 + "\n")
-					return
-				# Push ship away from asteroid
-				direction = (self.ship.position - asteroid.position).normalized() # type: ignore
-				self.ship.velocity = self.ship.velocity + direction * 50.0 # type: ignore 
-		
-		# Check for astronauts rescued by proximity to ship (ONLY if tethered)
-		for astronaut in self.astronauts:
-			if not astronaut.is_rescued and astronaut.tethered_to:
-				dist_to_ship = (astronaut.position - self.ship.position).magnitude() # type: ignore
-				if dist_to_ship < 20.0:  # Within 20 units while tethered = rescued
-					astronaut.is_rescued = True
-					astronaut.detach_tether()
-					print(f"\n[SUCCESS] Astronaut Rescued! Total: {sum(1 for a in self.astronauts if a.is_rescued)}/{len(self.astronauts)}\n")
+				# Collision detected - GAME OVER
+				self.game_over = True
+				self.game_over_reason = "SHIP HIT ASTEROID!"
+				self.ship_destroyed = True
+				print("\n" + "="*60)
+				print("#" * 60)
+				print("###  GAME OVER! " + self.game_over_reason + "  ###")
+				print("#" * 60)
+				print("="*60 + "\n")
+				# Hide ship by moving it far away
+				self.ship.position = Vector3(10000, 10000, 10000) # type: ignore
+				return
 		
 		# Astronaut-Asteroid collisions
 		for astronaut in self.astronauts:
@@ -939,7 +1045,7 @@ class VoidRescuerGame(GameApplication):
 			for asteroid in self.asteroids:
 				distance = (astronaut.position - asteroid.position).magnitude()
 				if distance < (astronaut.collision_radius + asteroid.collision_radius):
-					# Astronaut hit by asteroid - game over
+					# Astronaut hit by asteroid - GAME OVER
 					self.game_over = True
 					self.game_over_reason = "ASTRONAUT HIT BY ASTEROID!"
 					print("\n" + "="*60)
@@ -948,6 +1054,8 @@ class VoidRescuerGame(GameApplication):
 					print("#" * 60)
 					print("Mission Failed: Could not save astronaut")
 					print("="*60 + "\n")
+					# Mark astronaut as lost
+					astronaut.position = Vector3(10000, 10000, 10000)
 					return
 
 	def step(self, dt: float) -> None:
@@ -979,14 +1087,15 @@ class VoidRescuerGame(GameApplication):
 			self.render()
 			return
 		
-		# Mark astronauts as saved if they're 500+ units away from black hole
+		# Check station rescue condition: within 20 units of station center
 		for astronaut in self.astronauts:
-			if not astronaut.is_rescued:
-				distance_from_black_hole = (astronaut.position - self.black_hole.position).magnitude() # type: ignore
-				if distance_from_black_hole >= 500.0:
-					astronaut.is_rescued = True
-					astronaut.detach_tether()
-					print(f"[OK] Astronaut Escaped! Distance from black hole: {distance_from_black_hole:.1f}")
+			if astronaut.is_rescued:
+				continue
+			dist_station = (astronaut.position - self.station_position).magnitude()
+			if dist_station <= self.station_rescue_radius:
+				astronaut.is_rescued = True
+				astronaut.detach_tether()
+				print(f"[SUCCESS] Astronaut docked at station! Total: {sum(1 for a in self.astronauts if a.is_rescued)}/{len(self.astronauts)}")
 		
 		# Calculate distance from black hole
 		ship_distance = (self.ship.position - self.black_hole.position).magnitude() # type: ignore
@@ -1037,6 +1146,16 @@ class VoidRescuerGame(GameApplication):
 				print("#" * 60)
 				print(f"Mission Complete: {rescued_count}/{total_astronauts} saved")
 				print("="*60 + "\n")
+				# Auto-advance to next level if available
+				next_index = self.level_index + 1
+				if next_index < len(self.difficulty_order):
+					next_diff = self.difficulty_order[next_index]
+					print(f"\n[LEVEL COMPLETE] Advancing to {next_diff.upper()}...")
+					self._set_difficulty(next_diff)
+					self.reload_game()
+					return
+				else:
+					print("\n[CAMPAIGN COMPLETE] All levels finished!\n")
 		
 		if self.ship.fuel <= 0 and rescued_count < total_astronauts: # type: ignore
 			self.game_over = True
@@ -1081,6 +1200,28 @@ class VoidRescuerGame(GameApplication):
 		# Draw background stars
 		if self.star_field:
 			self.star_field.render()
+
+		# Draw rescue station (square pad 1000 units from black hole)
+		glPushMatrix()
+		glTranslatef(self.station_position.x, self.station_position.y, self.station_position.z)
+		glColor3f(0.7, 0.7, 0.7)  # Light gray pad
+		glBegin(GL_QUADS)
+		glVertex3f(-self.station_half_size, -self.station_half_size, 0)
+		glVertex3f(self.station_half_size, -self.station_half_size, 0)
+		glVertex3f(self.station_half_size, self.station_half_size, 0)
+		glVertex3f(-self.station_half_size, self.station_half_size, 0)
+		glEnd()
+		# Border
+		glColor3f(0.2, 0.8, 0.2)  # Green border
+		glLineWidth(3.0)
+		glBegin(GL_LINE_LOOP)
+		glVertex3f(-self.station_half_size, -self.station_half_size, 0.2)
+		glVertex3f(self.station_half_size, -self.station_half_size, 0.2)
+		glVertex3f(self.station_half_size, self.station_half_size, 0.2)
+		glVertex3f(-self.station_half_size, self.station_half_size, 0.2)
+		glEnd()
+		glLineWidth(1.0)
+		glPopMatrix()
 		
 		# Draw black hole (simple marker for now)
 		glPushMatrix()
@@ -1230,7 +1371,31 @@ def main() -> None:
 	global game
 	
 	print("="*70)
-	print("THE VOID RESCUER - Member 1: Physics & Movement Demo")
+	print("THE VOID RESCUER - Space Rescue Mission")
+	print("="*70)
+	print("\n*** SELECT DIFFICULTY ***\n")
+	print("1. EASY   - 4 astronauts, 5 asteroids  (More fuel, more power)")
+	print("2. MEDIUM - 6 astronauts, 9 asteroids  (Balanced)")
+	print("3. HARD   - 10 astronauts, 15 asteroids (Less fuel, less power)")
+	print()
+	
+	difficulty = "medium"
+	while True:
+		choice = input("Enter your choice (1/2/3): ").strip()
+		if choice == "1":
+			difficulty = "easy"
+			break
+		elif choice == "2":
+			difficulty = "medium"
+			break
+		elif choice == "3":
+			difficulty = "hard"
+			break
+		else:
+			print("Invalid choice. Please enter 1, 2, or 3.")
+	
+	print("\n" + "="*70)
+	print(f"DIFFICULTY: {difficulty.upper()}")
 	print("="*70)
 	print("\nControls:")
 	print("  W/Up Arrow    - Forward thrust")
@@ -1241,8 +1406,8 @@ def main() -> None:
 	print("  O             - Decrease ship thrust power")
 	print("  SPACE         - Tether/untether nearest astronaut")
 	print("  ESC           - Quit")
-	print("\nObjective: Escape the black hole's gravity!")
-	print("Strategy: Get closer to rescue astronauts, but increase power to escape!")
+	print("\nObjective: Rescue all astronauts and escape the black hole!")
+	print("WARNING: Avoid asteroids! Collision = GAME OVER!")
 	print("="*70)
 	print()
 	
@@ -1251,10 +1416,10 @@ def main() -> None:
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH) # type: ignore
 	glutInitWindowSize(800, 600)
 	glutInitWindowPosition(100, 100)
-	glutCreateWindow(b"The Void Rescuer - Physics Demo")
+	glutCreateWindow(b"The Void Rescuer")
 	
-	# Create and initialize game
-	game = VoidRescuerGame()
+	# Create and initialize game with selected difficulty
+	game = VoidRescuerGame(difficulty=difficulty)
 	game.initialize()
 	
 	# Register callbacks
