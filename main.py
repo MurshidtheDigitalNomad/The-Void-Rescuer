@@ -153,6 +153,43 @@ class GameApplication(ABC):
 # =========================================================================
 
 
+class StarField:
+	"""
+	Background star field with random small white dots.
+	"""
+
+	def __init__(self, num_stars: int = 200, spread: float = 2000.0):
+		import random
+		self.stars = []
+		for _ in range(num_stars):
+			# Random position in 3D space
+			x = random.uniform(-spread, spread)
+			y = random.uniform(-spread, spread)
+			z = random.uniform(-spread, spread)
+			# Random size (small dots)
+			size = random.uniform(0.5, 2.5)
+			# Random brightness
+			brightness = random.uniform(0.6, 1.0)
+			self.stars.append({
+				'position': Vector3(x, y, z),
+				'size': size,
+				'brightness': brightness
+			})
+
+	def render(self) -> None:
+		"""Render all stars as small white dots."""
+		glDisable(GL_LIGHTING)  # Disable lighting for stars
+		for star in self.stars:
+			glPushMatrix()
+			glTranslatef(star['position'].x, star['position'].y, star['position'].z)
+			# White color with varying brightness
+			b = star['brightness']
+			glColor3f(b, b, b)
+			gluSphere(gluNewQuadric(), star['size'], 4, 4)  # Small sphere
+			glPopMatrix()
+		glEnable(GL_LIGHTING)  # Re-enable lighting for other objects
+
+
 class BlackHole(GravitySource):
 	"""
 	Singularity at (0,0,0) that pulls objects using inverse-square law.
@@ -781,6 +818,7 @@ class VoidRescuerGame(GameApplication):
 		self.astronauts: List[SpaceAstronaut] = []
 		self.asteroids: List[SpaceAsteroid] = []
 		self.input_controller: Optional[InputController] = None
+		self.star_field: Optional[StarField] = None  # Background stars
 
 	def initialize(self) -> None:
 		"""Set up OpenGL state and initialize game objects."""
@@ -804,6 +842,7 @@ class VoidRescuerGame(GameApplication):
 		glMatrixMode(GL_MODELVIEW)
 		
 		# Create game objects
+		self.star_field = StarField(num_stars=200, spread=2000.0)
 		self.black_hole = BlackHole(strength=50000.0, event_horizon=150.0)
 		self.ship = SpaceShip(position=Vector3(400, 0, 0))
 		self.ship.gravity_source = self.black_hole
@@ -926,7 +965,7 @@ class VoidRescuerGame(GameApplication):
 		self.current_time += dt
 		
 		# Update physics
-		self.ship.update(dt)
+		self.ship.update(dt) # type: ignore
 		for astronaut in self.astronauts:
 			astronaut.update(dt)
 		for asteroid in self.asteroids:
@@ -943,35 +982,35 @@ class VoidRescuerGame(GameApplication):
 		# Mark astronauts as saved if they're 500+ units away from black hole
 		for astronaut in self.astronauts:
 			if not astronaut.is_rescued:
-				distance_from_black_hole = (astronaut.position - self.black_hole.position).magnitude()
+				distance_from_black_hole = (astronaut.position - self.black_hole.position).magnitude() # type: ignore
 				if distance_from_black_hole >= 500.0:
 					astronaut.is_rescued = True
 					astronaut.detach_tether()
 					print(f"[OK] Astronaut Escaped! Distance from black hole: {distance_from_black_hole:.1f}")
 		
 		# Calculate distance from black hole
-		ship_distance = (self.ship.position - self.black_hole.position).magnitude()
+		ship_distance = (self.ship.position - self.black_hole.position).magnitude() # type: ignore
 		
 		# Check if ship is inside event horizon
-		if self.black_hole.is_inside_event_horizon(self.ship.position):
+		if self.black_hole.is_inside_event_horizon(self.ship.position): # type: ignore
 			self.game_over = True
 			self.game_over_reason = "SHIP DESTROYED BY BLACK HOLE!"
-			ship_distance = (self.ship.position - self.black_hole.position).magnitude()
+			ship_distance = (self.ship.position - self.black_hole.position).magnitude() # type: ignore
 			self.ship_destroyed = True
 			print("\n" + "="*60)
 			print("#" * 60)
 			print("###  GAME OVER! " + self.game_over_reason + "  ###")
 			print("#" * 60)
 			print(f"Final distance from singularity: {ship_distance:.1f} units")
-			print(f"Ship's thrust power was: {self.ship.thrust_power:.1f}")
+			print(f"Ship's thrust power was: {self.ship.thrust_power:.1f}") # type: ignore
 			print("="*60 + "\n")
 			# Hide ship by moving it far away
-			self.ship.position = Vector3(10000, 10000, 10000)
+			self.ship.position = Vector3(10000, 10000, 10000) # type: ignore
 			return
 		
 		# Check for astronaut lost to black hole
 		for astronaut in self.astronauts:
-			if not astronaut.is_rescued and self.black_hole.is_inside_event_horizon(astronaut.position):
+			if not astronaut.is_rescued and self.black_hole.is_inside_event_horizon(astronaut.position): # type: ignore
 				self.game_over = True
 				self.game_over_reason = "ASTRONAUT LOST TO BLACK HOLE!"
 				print("\n" + "="*60)
@@ -999,7 +1038,7 @@ class VoidRescuerGame(GameApplication):
 				print(f"Mission Complete: {rescued_count}/{total_astronauts} saved")
 				print("="*60 + "\n")
 		
-		if self.ship.fuel <= 0 and rescued_count < total_astronauts:
+		if self.ship.fuel <= 0 and rescued_count < total_astronauts: # type: ignore
 			self.game_over = True
 			self.game_over_reason = "OUT OF FUEL!"
 			print("\n" + "="*60)
@@ -1009,7 +1048,7 @@ class VoidRescuerGame(GameApplication):
 			print(f"Rescued: {rescued_count}/{total_astronauts}")
 			print("="*60 + "\n")
 			# Hide ship by moving it far away
-			self.ship.position = Vector3(10000, 10000, 10000)
+			self.ship.position = Vector3(10000, 10000, 10000) # type: ignore
 			return
 		
 		# Warning when getting close
@@ -1022,7 +1061,7 @@ class VoidRescuerGame(GameApplication):
 
 	def render(self) -> None:
 		"""Render the scene."""
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT) # type: ignore
 		glLoadIdentity()
 		
 		# Camera setup - follow ship from behind and above
@@ -1039,10 +1078,14 @@ class VoidRescuerGame(GameApplication):
 				0, 0, 1  # Up vector
 			)
 		
+		# Draw background stars
+		if self.star_field:
+			self.star_field.render()
+		
 		# Draw black hole (simple marker for now)
 		glPushMatrix()
 		glColor3f(0.2, 0.0, 0.2)  # Dark purple
-		glutSolidSphere(self.black_hole.event_horizon, 32, 32)
+		glutSolidSphere(self.black_hole.event_horizon, 32, 32) # type: ignore
 		glPopMatrix()
 		
 		# Draw ship
@@ -1052,7 +1095,7 @@ class VoidRescuerGame(GameApplication):
 		# Draw astronauts and tethers
 		for astronaut in self.astronauts:
 			if astronaut.tethered_to:
-				render_tether_beam(self.ship, astronaut, self.current_time)
+				render_tether_beam(self.ship, astronaut, self.current_time) # type: ignore
 			astronaut.render()
 		
 		# Draw asteroids
@@ -1060,8 +1103,7 @@ class VoidRescuerGame(GameApplication):
 			asteroid.render()
 		
 		# Render HUD text (required power info and game over message)
-		render_hud_text(self.window_width, self.window_height, self.ship, 
-		               self.astronauts, self.black_hole, self.game_over, self.game_won, self.paused)
+		render_hud_text(self.window_width, self.window_height, self.ship, self.astronauts, self.black_hole, self.game_over, self.game_won, self.paused) # type: ignore
 		
 		glutSwapBuffers()
 
@@ -1098,7 +1140,7 @@ def timer_callback(value: int) -> None:
 			glutLeaveMainLoop()
 
 
-def keyboard_callback(key: bytes, x: int, y: int) -> None:
+def keyboard_callback(key: bytes, x: int, y: int) -> None: # type: ignore
 	"""GLUT keyboard down callback."""
 	if not game:
 		return
@@ -1136,7 +1178,7 @@ def keyboard_callback(key: bytes, x: int, y: int) -> None:
 			min_dist = float('inf')
 			for astronaut in game.astronauts:
 				if not astronaut.is_rescued:
-					dist = (astronaut.position - game.ship.position).magnitude()
+					dist = (astronaut.position - game.ship.position).magnitude() # type: ignore
 					if dist < min_dist and dist < 300:  # Within 300 units
 						min_dist = dist
 						nearest = astronaut
@@ -1146,11 +1188,11 @@ def keyboard_callback(key: bytes, x: int, y: int) -> None:
 					nearest.detach_tether()
 					print("Tether released")
 				else:
-					nearest.attach_tether(game.ship)
+					nearest.attach_tether(game.ship) # type: ignore
 					print(f"Tethered! Distance: {min_dist:.1f}")
 
 
-def keyboard_up_callback(key: bytes, x: int, y: int) -> None:
+def keyboard_up_callback(key: bytes, x: int, y: int) -> None: # type: ignore
 	"""GLUT keyboard up callback."""
 	if game and game.input_controller:
 		key_str = key.decode('utf-8').lower()
@@ -1206,7 +1248,7 @@ def main() -> None:
 	
 	# Initialize GLUT
 	glutInit()
-	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH) # type: ignore
 	glutInitWindowSize(800, 600)
 	glutInitWindowPosition(100, 100)
 	glutCreateWindow(b"The Void Rescuer - Physics Demo")
