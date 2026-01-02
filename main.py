@@ -641,7 +641,7 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	glRasterPos2f(15, 25)
 	text = f"Current Power: {ship.thrust_power:.1f}"
 	for char in text:
-		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display fuel level with color coding
 	fuel_percent = (ship.fuel / ship.fuel_max) * 100 if ship.fuel_max > 0 else 0
@@ -655,14 +655,14 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	glRasterPos2f(15, 50)
 	text = f"Fuel: {ship.fuel:.0f}/{ship.fuel_max:.0f} ({fuel_percent:.1f}%)"
 	for char in text:
-		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display rescue count
 	glColor3f(0.2, 1.0, 0.2)  # Green for rescue status
 	glRasterPos2f(15, 75)
 	text = f"Rescued: {rescued_count}/{total_astronauts}"
 	for char in text:
-		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display required power if astronaut is nearby
 	if nearest_astronaut and min_distance < 500:
@@ -678,12 +678,12 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		glRasterPos2f(15, 100)
 		text = f"Required Power: {required_power:.1f}"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glRasterPos2f(15, 125)
 		text = f"Distance to Astronaut: {min_distance:.1f}"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display game over message if game is over
 	if game_over:
@@ -691,13 +691,13 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		glRasterPos2f(window_width // 2 - 200, window_height // 2 - 50)
 		text = "===== GAME OVER ====="
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
 		glRasterPos2f(window_width // 2 - 100, window_height // 2)
 		text = "Press R to Restart"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display victory message if won
 	if not game_over and game_won:
@@ -705,19 +705,19 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		glRasterPos2f(window_width // 2 - 200, window_height // 2 - 80)
 		text = "====== VICTORY! ======"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glColor3f(0.0, 1.0, 1.0)  # Cyan
 		glRasterPos2f(window_width // 2 - 180, window_height // 2 - 20)
 		text = "ALL ASTRONAUTS RESCUED!"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
 		glRasterPos2f(window_width // 2 - 120, window_height // 2 + 40)
 		text = "Press R to Play Again"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display pause message if paused
 	if paused and not game_over and not game_won:
@@ -725,13 +725,13 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		glRasterPos2f(window_width // 2 - 120, window_height - 100)
 		text = "|| PAUSED"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
 		glRasterPos2f(window_width // 2 - 150, window_height - 130)
 		text = "Press TAB to Resume"
 		for char in text:
-			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Re-enable depth testing
 	glEnable(GL_DEPTH_TEST)
@@ -905,12 +905,12 @@ class VoidRescuerGame(GameApplication):
 		"""Check for collisions between game objects."""
 		# Ship-Asteroid collisions
 		for asteroid in self.asteroids:
-			distance = (self.ship.position - asteroid.position).magnitude()
-			if distance < (self.ship.collision_radius + asteroid.collision_radius):
+			distance = (self.ship.position - asteroid.position).magnitude() # type: ignore 
+			if distance < (self.ship.collision_radius + asteroid.collision_radius): # type: ignore
 				# Collision detected - damage ship
-				self.ship.fuel = max(0, self.ship.fuel - 50.0)
+				self.ship.fuel = max(0, self.ship.fuel - 50.0) # type: ignore
 				print("\n[WARNING] COLLISION! Ship hit asteroid! -50 Fuel!\n")
-				if self.ship.fuel <= 0:
+				if self.ship.fuel <= 0: # type: ignore
 					self.game_over = True
 					self.game_over_reason = "SHIP DESTROYED BY ASTEROID!"
 					print("\n" + "="*60)
@@ -920,13 +920,13 @@ class VoidRescuerGame(GameApplication):
 					print("="*60 + "\n")
 					return
 				# Push ship away from asteroid
-				direction = (self.ship.position - asteroid.position).normalized()
-				self.ship.velocity = self.ship.velocity + direction * 50.0
+				direction = (self.ship.position - asteroid.position).normalized() # type: ignore
+				self.ship.velocity = self.ship.velocity + direction * 50.0 # type: ignore 
 		
 		# Check for astronauts rescued by proximity to ship (ONLY if tethered)
 		for astronaut in self.astronauts:
 			if not astronaut.is_rescued and astronaut.tethered_to:
-				dist_to_ship = (astronaut.position - self.ship.position).magnitude()
+				dist_to_ship = (astronaut.position - self.ship.position).magnitude() # type: ignore
 				if dist_to_ship < 20.0:  # Within 20 units while tethered = rescued
 					astronaut.is_rescued = True
 					astronaut.detach_tether()
