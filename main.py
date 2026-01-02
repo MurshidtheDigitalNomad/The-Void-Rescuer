@@ -1,15 +1,9 @@
-"""
-Project scaffolding for The Void Rescuer.
-
-This file sets up abstract interfaces and lightweight data structures so we can
-iterate on gameplay (gravity, tethering, HUD) without committing to OpenGL
-details yet.
-"""
 
 from __future__ import annotations
 
 import math
 import time
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Iterable, Optional, List
@@ -220,6 +214,8 @@ class SpaceShip(Ship):
 		self.thrust_power_max = 300.0  # Maximum thrust
 		self.drag_coefficient = 0.98  # Natural slowdown
 		self.gravity_source: Optional[GravitySource] = None
+		# Collision
+		self.collision_radius = 25.0  # Ship collision sphere
 		# Fuel system
 		self.fuel = 1000.0  # Starting fuel
 		self.fuel_max = 1000.0  # Maximum fuel capacity
@@ -383,8 +379,9 @@ class SpaceAstronaut(Astronaut):
 		self.is_rescued = False
 		self.tethered_to: Optional[Ship] = None
 		self.gravity_source: Optional[GravitySource] = None
-		self.tether_max_distance = 500.0
-		self.tether_pull_speed = 0.3
+		self.collision_radius = 10.0  # Astronaut collision sphere
+		self.tether_max_distance = 800.0  # Increased from 500
+		self.tether_pull_strength = 150.0  # Strong pull force
 		self.float_offset = 0.0  # For floating animation
 
 	def attach_tether(self, ship: Ship) -> None:
@@ -411,7 +408,7 @@ class SpaceAstronaut(Astronaut):
 		if distance < 20.0:
 			self.is_rescued = True
 			self.detach_tether()
-			print(f"✓ Astronaut Rescued! Total rescued: {self.is_rescued}")
+			print(f"[OK] Astronaut Rescued! Total rescued: {self.is_rescued}")
 			return
 
 		# Check if tether should snap
@@ -423,14 +420,13 @@ class SpaceAstronaut(Astronaut):
 		if distance > 0.1:
 			unit_direction = direction.normalized()
 
-			# Pull astronaut toward ship
-			# Speed is proportional to distance and ship's velocity
-			pull_speed = distance * self.tether_pull_speed
-			if hasattr(self.tethered_to, 'velocity'):
-				ship_speed = self.tethered_to.velocity.magnitude()
-				pull_speed += ship_speed * 0.5
-
-			self.velocity = unit_direction * pull_speed
+			# Apply strong pull force toward ship
+			# Force increases with distance (like a spring)
+			pull_force = unit_direction * self.tether_pull_strength * (distance / 100.0)
+			acceleration = pull_force * (1.0 / self.mass)
+			
+			# Add to existing velocity (don't replace it)
+			self.velocity = self.velocity + acceleration * 0.016
 
 	def integrate(self, dt: float) -> None:
 		"""
@@ -507,6 +503,7 @@ class SpaceAsteroid(Asteroid):
 		self.position = position
 		self.velocity = Vector3()
 		self.radius = radius
+		self.collision_radius = radius  # Use radius for collision
 		self.mass = mass
 		self.gravity_source: Optional[GravitySource] = None
 
@@ -571,7 +568,7 @@ def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3,
 
 
 def render_hud_text(window_width: int, window_height: int, ship: SpaceShip, 
-	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False) -> None:
+	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False, game_won: bool = False, paused: bool = False) -> None:
 	"""
 	Render HUD text in top-left corner showing power, fuel, and rescue information.
 	"""
@@ -655,13 +652,47 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	if game_over:
 		glColor3f(1.0, 0.0, 0.0)  # Red for game over
 		glRasterPos2f(window_width // 2 - 200, window_height // 2 - 50)
-		text = "GAME OVER - OUT OF FUEL!"
+		text = "===== GAME OVER ====="
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 		
 		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
 		glRasterPos2f(window_width // 2 - 100, window_height // 2)
-		text = "Press R to Reload"
+		text = "Press R to Restart"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
+	# Display victory message if won
+	if not game_over and game_won:
+		glColor3f(0.0, 1.0, 0.0)  # Green for victory
+		glRasterPos2f(window_width // 2 - 200, window_height // 2 - 80)
+		text = "====== VICTORY! ======"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glColor3f(0.0, 1.0, 1.0)  # Cyan
+		glRasterPos2f(window_width // 2 - 180, window_height // 2 - 20)
+		text = "ALL ASTRONAUTS RESCUED!"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
+		glRasterPos2f(window_width // 2 - 120, window_height // 2 + 40)
+		text = "Press R to Play Again"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
+	# Display pause message if paused
+	if paused and not game_over and not game_won:
+		glColor3f(1.0, 1.0, 1.0)  # White for pause
+		glRasterPos2f(window_width // 2 - 120, window_height - 100)
+		text = "|| PAUSED"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
+		glRasterPos2f(window_width // 2 - 150, window_height - 130)
+		text = "Press TAB to Resume"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
 	
@@ -736,6 +767,10 @@ class VoidRescuerGame(GameApplication):
 		self.window_width = 1200
 		self.window_height = 800
 		self.game_over = False
+		self.game_over_reason = ""  # Reason for game over
+		self.game_won = False  # Track victory
+		self.victory_announced = False  # Track if victory was announced
+		self.paused = False  # Track pause state
 		self.last_time = time.time()
 		self.current_time = 0.0
 		self.ship_destroyed = False  # Track if ship was destroyed
@@ -794,6 +829,10 @@ class VoidRescuerGame(GameApplication):
 	def reload_game(self) -> None:
 		"""Reset the game to initial state."""
 		self.game_over = False
+		self.game_over_reason = ""
+		self.game_won = False
+		self.victory_announced = False
+		self.paused = False
 		self.ship_destroyed = False
 		self.current_time = 0.0
 		self.last_time = time.time()
@@ -823,17 +862,68 @@ class VoidRescuerGame(GameApplication):
 		self.input_controller = InputController(self.ship)
 		print("\nGame reloaded!\n")
 
+	def check_collisions(self) -> None:
+		"""Check for collisions between game objects."""
+		# Ship-Asteroid collisions
+		for asteroid in self.asteroids:
+			distance = (self.ship.position - asteroid.position).magnitude()
+			if distance < (self.ship.collision_radius + asteroid.collision_radius):
+				# Collision detected - damage ship
+				self.ship.fuel = max(0, self.ship.fuel - 50.0)
+				print("\n[WARNING] COLLISION! Ship hit asteroid! -50 Fuel!\n")
+				if self.ship.fuel <= 0:
+					self.game_over = True
+					self.game_over_reason = "SHIP DESTROYED BY ASTEROID!"
+					print("\n" + "="*60)
+					print("#" * 60)
+					print("###  GAME OVER! " + self.game_over_reason + "  ###")
+					print("#" * 60)
+					print("="*60 + "\n")
+					return
+				# Push ship away from asteroid
+				direction = (self.ship.position - asteroid.position).normalized()
+				self.ship.velocity = self.ship.velocity + direction * 50.0
+		
+		# Check for astronauts rescued by proximity to ship (ONLY if tethered)
+		for astronaut in self.astronauts:
+			if not astronaut.is_rescued and astronaut.tethered_to:
+				dist_to_ship = (astronaut.position - self.ship.position).magnitude()
+				if dist_to_ship < 20.0:  # Within 20 units while tethered = rescued
+					astronaut.is_rescued = True
+					astronaut.detach_tether()
+					print(f"\n[SUCCESS] Astronaut Rescued! Total: {sum(1 for a in self.astronauts if a.is_rescued)}/{len(self.astronauts)}\n")
+		
+		# Astronaut-Asteroid collisions
+		for astronaut in self.astronauts:
+			if astronaut.is_rescued:
+				continue
+			for asteroid in self.asteroids:
+				distance = (astronaut.position - asteroid.position).magnitude()
+				if distance < (astronaut.collision_radius + asteroid.collision_radius):
+					# Astronaut hit by asteroid - game over
+					self.game_over = True
+					self.game_over_reason = "ASTRONAUT HIT BY ASTEROID!"
+					print("\n" + "="*60)
+					print("#" * 60)
+					print("###  GAME OVER! " + self.game_over_reason + "  ###")
+					print("#" * 60)
+					print("Mission Failed: Could not save astronaut")
+					print("="*60 + "\n")
+					return
+
 	def step(self, dt: float) -> None:
 		"""Single frame update including input, simulation, and rendering."""
-		if self.game_over:
+		# Process input
+		if self.input_controller:
+			self.input_controller.update(dt)
+		
+		# Don't process physics if game is over or paused, but DO render
+		if self.game_over or self.paused:
+			self.render()
 			return
 		
 		# Update current time for animations
 		self.current_time += dt
-		
-		# Process input
-		if self.input_controller:
-			self.input_controller.update(dt)
 		
 		# Update physics
 		self.ship.update(dt)
@@ -842,6 +932,14 @@ class VoidRescuerGame(GameApplication):
 		for asteroid in self.asteroids:
 			asteroid.update(dt)
 		
+		# Check collisions
+		self.check_collisions()
+		
+		# If game over from collision, stop here
+		if self.game_over:
+			self.render()
+			return
+		
 		# Mark astronauts as saved if they're 500+ units away from black hole
 		for astronaut in self.astronauts:
 			if not astronaut.is_rescued:
@@ -849,7 +947,7 @@ class VoidRescuerGame(GameApplication):
 				if distance_from_black_hole >= 500.0:
 					astronaut.is_rescued = True
 					astronaut.detach_tether()
-					print(f"✓ Astronaut Escaped! Distance from black hole: {distance_from_black_hole:.1f}")
+					print(f"[OK] Astronaut Escaped! Distance from black hole: {distance_from_black_hole:.1f}")
 		
 		# Calculate distance from black hole
 		ship_distance = (self.ship.position - self.black_hole.position).magnitude()
@@ -857,11 +955,13 @@ class VoidRescuerGame(GameApplication):
 		# Check if ship is inside event horizon
 		if self.black_hole.is_inside_event_horizon(self.ship.position):
 			self.game_over = True
+			self.game_over_reason = "SHIP DESTROYED BY BLACK HOLE!"
+			ship_distance = (self.ship.position - self.black_hole.position).magnitude()
 			self.ship_destroyed = True
 			print("\n" + "="*60)
-			print("█" * 60)
-			print("███  GAME OVER! SHIP DESTROYED BY BLACK HOLE!  ███")
-			print("█" * 60)
+			print("#" * 60)
+			print("###  GAME OVER! " + self.game_over_reason + "  ###")
+			print("#" * 60)
 			print(f"Final distance from singularity: {ship_distance:.1f} units")
 			print(f"Ship's thrust power was: {self.ship.thrust_power:.1f}")
 			print("="*60 + "\n")
@@ -869,16 +969,43 @@ class VoidRescuerGame(GameApplication):
 			self.ship.position = Vector3(10000, 10000, 10000)
 			return
 		
+		# Check for astronaut lost to black hole
+		for astronaut in self.astronauts:
+			if not astronaut.is_rescued and self.black_hole.is_inside_event_horizon(astronaut.position):
+				self.game_over = True
+				self.game_over_reason = "ASTRONAUT LOST TO BLACK HOLE!"
+				print("\n" + "="*60)
+				print("#" * 60)
+				print("###  GAME OVER! " + self.game_over_reason + "  ###")
+				print("#" * 60)
+				print("Mission Failed: Could not save all astronauts")
+				print("="*60 + "\n")
+				return
+		
 		# Check if fuel is depleted with unsaved astronauts
 		rescued_count = sum(1 for a in self.astronauts if a.is_rescued)
 		total_astronauts = len(self.astronauts)
 		
+		# Check for victory - all astronauts rescued!
+		if rescued_count == total_astronauts and rescued_count > 0:
+			self.game_won = True
+			# Only print victory message once
+			if not self.victory_announced:
+				self.victory_announced = True
+				print("\n" + "="*60)
+				print("#" * 60)
+				print("###  VICTORY! ALL ASTRONAUTS RESCUED!  ###")
+				print("#" * 60)
+				print(f"Mission Complete: {rescued_count}/{total_astronauts} saved")
+				print("="*60 + "\n")
+		
 		if self.ship.fuel <= 0 and rescued_count < total_astronauts:
 			self.game_over = True
+			self.game_over_reason = "OUT OF FUEL!"
 			print("\n" + "="*60)
-			print("█" * 60)
-			print("███  GAME OVER! OUT OF FUEL!  ███")
-			print("█" * 60)
+			print("#" * 60)
+			print("###  GAME OVER! " + self.game_over_reason + "  ###")
+			print("#" * 60)
 			print(f"Rescued: {rescued_count}/{total_astronauts}")
 			print("="*60 + "\n")
 			# Hide ship by moving it far away
@@ -888,7 +1015,7 @@ class VoidRescuerGame(GameApplication):
 		# Warning when getting close
 		if ship_distance < 300 and not self.ship_destroyed:
 			if int(self.current_time * 2) % 2 == 0:  # Flash warning
-				print(f"\r⚠️  WARNING! Distance: {ship_distance:.1f} units - INCREASE POWER!", end="")
+				print(f"\r[WARNING] Distance: {ship_distance:.1f} units - INCREASE POWER!", end="")
 		
 		# Render
 		self.render()
@@ -934,7 +1061,7 @@ class VoidRescuerGame(GameApplication):
 		
 		# Render HUD text (required power info and game over message)
 		render_hud_text(self.window_width, self.window_height, self.ship, 
-		               self.astronauts, self.black_hole, self.game_over)
+		               self.astronauts, self.black_hole, self.game_over, self.game_won, self.paused)
 		
 		glutSwapBuffers()
 
@@ -955,30 +1082,53 @@ def display_callback() -> None:
 
 def timer_callback(value: int) -> None:
 	"""GLUT timer callback for game loop."""
-	if game and not game.game_over:
-		current = time.time()
-		dt = current - game.last_time
-		game.last_time = current
-		
-		game.step(dt)
-		glutPostRedisplay()
-		glutTimerFunc(16, timer_callback, 0)  # ~60 FPS
+	if game:
+		try:
+			current = time.time()
+			dt = current - game.last_time
+			game.last_time = current
+			
+			game.step(dt)
+			glutPostRedisplay()
+			glutTimerFunc(16, timer_callback, 0)  # ~60 FPS
+		except Exception as e:
+			print(f"\nERROR in game loop: {e}")
+			import traceback
+			traceback.print_exc()
+			glutLeaveMainLoop()
 
 
 def keyboard_callback(key: bytes, x: int, y: int) -> None:
 	"""GLUT keyboard down callback."""
-	if game and game.input_controller:
+	if not game:
+		return
+	
+	# Escape to quit - HIGHEST PRIORITY
+	if key == b'\x1b':  # ESC
+		print("Exiting game via ESC...")
+		glutLeaveMainLoop()
+		sys.exit(0)
+		return
+	
+	# TAB to pause/unpause
+	if key == b'\t':
+		game.paused = not game.paused
+		if game.paused:
+			print("Game PAUSED")
+		else:
+			print("Game RESUMED")
+		return
+	
+	# R to reload game anytime
+	if key == b'r' or key == b'R':
+		print("Restarting game...")
+		game.reload_game()
+		return
+	
+	# Process other input
+	if game.input_controller:
 		key_str = key.decode('utf-8').lower()
 		game.input_controller.key_down(key_str)
-		
-		# Escape to quit
-		if key == b'\x1b':  # ESC
-			sys.exit(0)
-		
-		# R to reload game when game over
-		if key == b'r' and game.game_over:
-			game.reload_game()
-			return
 		
 		# Space to tether nearest astronaut
 		if key == b' ':
@@ -987,7 +1137,7 @@ def keyboard_callback(key: bytes, x: int, y: int) -> None:
 			for astronaut in game.astronauts:
 				if not astronaut.is_rescued:
 					dist = (astronaut.position - game.ship.position).magnitude()
-					if dist < min_dist and dist < 200:  # Within 200 units
+					if dist < min_dist and dist < 300:  # Within 300 units
 						min_dist = dist
 						nearest = astronaut
 			
@@ -1078,5 +1228,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-	import sys
 	main()
