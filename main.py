@@ -9,15 +9,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Iterable, Optional, List
 
-try:
-	from OpenGL.GL import *
-	from OpenGL.GLU import *
-	from OpenGL.GLUT import *
-except ImportError:
-	raise ImportError(
-		"PyOpenGL not found. Install with: pip install PyOpenGL"
-	)
-
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
 
 @dataclass
 class Vector3:
@@ -215,8 +209,8 @@ class BlackHole(GravitySource):
 
 		# Inverse square law with stronger pull very close to singularity
 		# Force increases dramatically as distance decreases
-		# Increase pull strength (global multiplier x5)
-		force_magnitude = (self.strength / (distance * distance)) * 5.0
+		# Base pull strength (no multiplier)
+		force_magnitude = (self.strength / (distance * distance)) * 1.0
 		
 		# Add exponential factor for extreme pull near event horizon
 		if distance < 200:
@@ -240,7 +234,7 @@ class SpaceShip(Ship):
 
 	def __init__(
 		self,
-		position: Vector3 = Vector3(400, 0, 0),
+		position: Vector3 = Vector3(600, 0, 0),
 		heading_degrees: float = 180.0,
 		mass: float = 50.0,  # Increased mass for stronger gravity effects
 	):
@@ -248,9 +242,9 @@ class SpaceShip(Ship):
 		self.velocity = Vector3()
 		self.heading_degrees = heading_degrees
 		self.mass = mass
-		self.thrust_power = 100.0  # Base thrust power
+		self.thrust_power = 50.0  # Base thrust power
 		self.thrust_power_min = 20.0  # Minimum thrust
-		self.thrust_power_max = 300.0  # Maximum thrust
+		self.thrust_power_max = 200.0  # Maximum thrust
 		self.drag_coefficient = 0.98  # Natural slowdown
 		self.gravity_source: Optional[GravitySource] = None
 		# Collision
@@ -419,8 +413,8 @@ class SpaceAstronaut(Astronaut):
 		self.tethered_to: Optional[Ship] = None
 		self.gravity_source: Optional[GravitySource] = None
 		self.collision_radius = 10.0  # Astronaut collision sphere
-		self.tether_max_distance = 800.0  # Increased from 500
-		self.tether_pull_strength = 150.0  # Strong pull force
+		self.tether_max_distance = 300.0  # Increased from 500
+		self.tether_pull_strength = 200.0  # Strong pull force
 		self.float_offset = 0.0  # For floating animation
 
 	def attach_tether(self, ship: Ship) -> None:
@@ -616,7 +610,7 @@ def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3,
 
 
 def render_hud_text(window_width: int, window_height: int, ship: SpaceShip, 
-	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False, game_won: bool = False, paused: bool = False) -> None:
+	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False, game_won: bool = False, paused: bool = False, difficulty: str = "medium") -> None:
 	"""
 	Render HUD text in top-left corner showing power, fuel, and rescue information.
 	"""
@@ -747,6 +741,15 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		glColor3f(1.0, 1.0, 0.0)  # Yellow for instructions
 		glRasterPos2f(window_width // 2 - 150, window_height - 130)
 		text = "Press TAB to Resume"
+			# Display current level on right side
+			glColor3f(1.0, 1.0, 0.0)  # Yellow
+			level_text = f"LEVEL: {difficulty.upper()}"
+			# Calculate position for right-aligned text
+			text_width = len(level_text) * 10  # Approximate width
+			glRasterPos2f(window_width - text_width - 15, 25)
+			for char in level_text:
+				glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))  # type: ignore
+	
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
@@ -848,23 +851,23 @@ class VoidRescuerGame(GameApplication):
 			"easy": {
 				"num_astronauts": 4,
 				"num_asteroids": 5,
-				"fuel_consumption": 0.03,
-				"thrust_power": 120.0,
-				"initial_fuel": 1500.0
+				"fuel_consumption": 0.02,
+				"thrust_power": 80.0,
+				"initial_fuel": 2000.0
 			},
 			"medium": {
 				"num_astronauts": 6,
 				"num_asteroids": 9,
-				"fuel_consumption": 0.05,
-				"thrust_power": 100.0,
-				"initial_fuel": 1000.0
+				"fuel_consumption": 0.03,
+				"thrust_power": 60.0,
+				"initial_fuel": 1500.0
 			},
 			"hard": {
 				"num_astronauts": 10,
 				"num_asteroids": 15,
-				"fuel_consumption": 0.08,
-				"thrust_power": 80.0,
-				"initial_fuel": 800.0
+				"fuel_consumption": 0.05,
+				"thrust_power": 50.0,
+				"initial_fuel": 1200.0
 			}
 		}
 		
@@ -975,7 +978,7 @@ class VoidRescuerGame(GameApplication):
 		return asteroid
 
 	def reload_game(self) -> None:
-		"""Reset the game to initial state."""
+		"""Reset the game to initial state with current difficulty."""
 		self.game_over = False
 		self.game_over_reason = ""
 		self.game_won = False
@@ -1017,6 +1020,14 @@ class VoidRescuerGame(GameApplication):
 			self.asteroids.append(asteroid)
 		
 		self.input_controller = InputController(self.ship)
+		
+		# Print current difficulty info
+		print(f"\n[DIFFICULTY: {self.difficulty.upper()}]")
+		print(f"  Astronauts: {num_astronauts}")
+		print(f"  Asteroids: {num_asteroids}")
+		print(f"  Initial Fuel: {self.current_settings['initial_fuel']}")
+		print(f"  Fuel Consumption: {self.current_settings['fuel_consumption']}")
+		print(f"  Thrust Power: {self.current_settings['thrust_power']}")
 		print("\nGame reloaded!\n")
 
 	def check_collisions(self) -> None:
