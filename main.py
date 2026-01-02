@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import math
 import time
+<<<<<<< HEAD
+=======
 import sys
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -568,6 +571,54 @@ class SpaceAsteroid(Asteroid):
 		glPopMatrix()
 
 
+class RescueGate(Renderable):
+	"""
+	Safe zone where astronauts must be brought to be rescued.
+	Located far from the black hole.
+	"""
+
+	def __init__(self, position: Vector3 = Vector3(-600, 0, 0), radius: float = 50.0):
+		self.position = position
+		self.radius = radius
+		self.score = 0
+
+	def is_inside_gate(self, position: Vector3) -> bool:
+		"""Check if a position is inside the gate."""
+		distance = (position - self.position).magnitude()
+		return distance < self.radius
+
+	def add_score(self, points: int = 100) -> None:
+		"""Add points when astronaut is rescued."""
+		self.score += points
+
+	def render(self) -> None:
+		"""Render the rescue gate as a glowing sphere with a ring."""
+		glPushMatrix()
+		
+		# Move to gate position
+		glTranslatef(self.position.x, self.position.y, self.position.z)
+		
+		# Outer glowing sphere (semi-transparent effect via color)
+		glColor4f(0.0, 1.0, 0.5, 0.3)  # Semi-transparent green
+		glutSolidSphere(self.radius + 10, 32, 32)
+		
+		# Inner solid sphere (brighter green)
+		glColor3f(0.0, 1.0, 0.5)  # Bright green
+		glutSolidSphere(self.radius, 24, 24)
+		
+		# Ring marker (yellow)
+		glColor3f(1.0, 1.0, 0.0)
+		glBegin(GL_LINE_LOOP)
+		for i in range(32):
+			angle = (i / 32.0) * 2 * math.pi
+			x = self.radius * math.cos(angle)
+			y = self.radius * math.sin(angle)
+			glVertex3f(x, y, 0)
+		glEnd()
+		
+		glPopMatrix()
+
+
 def render_tether_beam(ship: SpaceShip, astronaut: SpaceAstronaut, time_value: float) -> None:
 	"""
 	Render pulsing tether beam between ship and astronaut.
@@ -612,7 +663,7 @@ def calculate_required_power(black_hole: BlackHole, astronaut_position: Vector3,
 def render_hud_text(window_width: int, window_height: int, ship: SpaceShip, 
 	                   astronauts: List[SpaceAstronaut], black_hole: BlackHole, game_over: bool = False, game_won: bool = False, paused: bool = False, difficulty: str = "medium") -> None:
 	"""
-	Render HUD text in top-left corner showing power, fuel, and rescue information.
+	Render HUD text in top-left corner showing power, fuel, speed, energy, distance, and rescue information.
 	"""
 	# Find nearest astronaut
 	nearest_astronaut = None
@@ -629,6 +680,14 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	rescued_count = sum(1 for a in astronauts if a.is_rescued)
 	total_astronauts = len(astronauts)
 	
+	# Calculate ship speed
+	ship_speed = ship.velocity.magnitude()
+	
+	# Calculate distance to rescue gate
+	distance_to_gate = float('inf')
+	if gate:
+		distance_to_gate = (ship.position - gate.position).magnitude()
+	
 	# Switch to 2D projection for HUD
 	glMatrixMode(GL_PROJECTION)
 	glPushMatrix()
@@ -641,14 +700,24 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	# Disable depth testing for HUD
 	glDisable(GL_DEPTH_TEST)
 	
+<<<<<<< HEAD
+	# Display ship speed
+=======
 	# Always display current power (will be recolored below if comparing)
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 	glColor3f(0.2, 1.0, 0.2)  # Bright green
 	glRasterPos2f(15, 25)
+	text = f"Speed: {ship_speed:.1f} u/s"
+	for char in text:
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+	
+	# Always display current power
+	glRasterPos2f(15, 50)
 	text = f"Current Power: {ship.thrust_power:.1f}"
 	for char in text:
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
-	# Display fuel level with color coding
+	# Display fuel level (energy) with color coding
 	fuel_percent = (ship.fuel / ship.fuel_max) * 100 if ship.fuel_max > 0 else 0
 	if fuel_percent > 50:
 		glColor3f(0.2, 1.0, 0.2)  # Green - plenty of fuel
@@ -657,17 +726,32 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 	else:
 		glColor3f(1.0, 0.0, 0.0)  # Red - critical fuel
 	
-	glRasterPos2f(15, 50)
-	text = f"Fuel: {ship.fuel:.0f}/{ship.fuel_max:.0f} ({fuel_percent:.1f}%)"
+	glRasterPos2f(15, 75)
+	text = f"Energy: {ship.fuel:.0f}/{ship.fuel_max:.0f} ({fuel_percent:.1f}%)"
 	for char in text:
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 	
 	# Display rescue count
 	glColor3f(0.2, 1.0, 0.2)  # Green for rescue status
-	glRasterPos2f(15, 75)
+	glRasterPos2f(15, 100)
 	text = f"Rescued: {rescued_count}/{total_astronauts}"
 	for char in text:
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
+	
+	# Display distance to rescue gate
+	if gate:
+		glColor3f(1.0, 1.0, 0.0)  # Yellow for gate info
+		glRasterPos2f(15, 125)
+		text = f"Distance to Gate: {distance_to_gate:.1f}"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+		
+		glColor3f(0.0, 1.0, 1.0)  # Cyan for score
+		glRasterPos2f(15, 150)
+		text = f"Gate Score: {gate.score}"
+		for char in text:
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+
 	
 	# Display required power if astronaut is nearby
 	if nearest_astronaut and min_distance < 500:
@@ -681,17 +765,26 @@ def render_hud_text(window_width: int, window_height: int, ship: SpaceShip,
 		else:
 			glColor3f(1.0, 0.0, 0.0)  # Red - insufficient power
 		
+<<<<<<< HEAD
+		glRasterPos2f(15, 175)
+		text = f"Required Power: {required_power:.1f}"
+=======
 		glRasterPos2f(15, 100)
 		text = f"Required Power: {required_power:.1f} (gravity+20)"
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
+<<<<<<< HEAD
+		glRasterPos2f(15, 200)
+=======
 		glRasterPos2f(15, 125)
 		text = f"Current Power: {current_power:.1f} ({ratio:.2f}x req)"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
 		
 		glRasterPos2f(15, 150)
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 		text = f"Distance to Astronaut: {min_distance:.1f}"
 		for char in text:
 			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char)) # type: ignore
@@ -844,6 +937,14 @@ class VoidRescuerGame(GameApplication):
 		self.astronauts: List[SpaceAstronaut] = []
 		self.asteroids: List[SpaceAsteroid] = []
 		self.input_controller: Optional[InputController] = None
+<<<<<<< HEAD
+		self.rescue_gate: Optional[RescueGate] = None
+		
+		# Spawning system
+		self.spawn_timer = 0.0
+		self.spawn_interval = 5.0  # Spawn new astronaut every 5 seconds
+		self.max_astronauts = 8  # Maximum number of astronauts in orbit
+=======
 		self.star_field: Optional[StarField] = None  # Background stars
 		
 		# Difficulty settings
@@ -879,6 +980,7 @@ class VoidRescuerGame(GameApplication):
 		self.current_settings = self.difficulty_settings.get(self.difficulty, self.difficulty_settings["medium"])
 		if self.difficulty in self.difficulty_order:
 			self.level_index = self.difficulty_order.index(self.difficulty)
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 
 	def initialize(self) -> None:
 		"""Set up OpenGL state and initialize game objects."""
@@ -907,6 +1009,14 @@ class VoidRescuerGame(GameApplication):
 		self.ship = SpaceShip(position=Vector3(400, 0, 0))
 		self.ship.gravity_source = self.black_hole
 		
+<<<<<<< HEAD
+		# Create test astronauts with random positions in orbit
+		for _ in range(4):
+			angle = random.uniform(0, 360)
+			rad = math.radians(angle)
+			distance = random.uniform(280, 320)
+			pos = Vector3(math.cos(rad) * distance, math.sin(rad) * distance, 0)
+=======
 		# Apply difficulty settings to ship
 		self.ship.fuel = self.current_settings["initial_fuel"]
 		self.ship.fuel_max = self.current_settings["initial_fuel"]
@@ -921,15 +1031,30 @@ class VoidRescuerGame(GameApplication):
 			angle = i * angle_step
 			rad = math.radians(angle)
 			pos = Vector3(math.cos(rad) * spawn_radius, math.sin(rad) * spawn_radius, 0)
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 			astronaut = SpaceAstronaut(position=pos)
 			astronaut.gravity_source = self.black_hole
 			self.astronauts.append(astronaut)
 		
+<<<<<<< HEAD
+		# Create test asteroids with random positions in orbit
+		for _ in range(4):
+			angle = random.uniform(0, 360)
+			rad = math.radians(angle)
+			distance = random.uniform(230, 270)
+			pos = Vector3(math.cos(rad) * distance, math.sin(rad) * distance, 0)
+			asteroid = SpaceAsteroid(position=pos)
+			asteroid.gravity_source = self.black_hole
+=======
 		# Create asteroids based on difficulty
 		num_asteroids = self.current_settings["num_asteroids"]
 		for _ in range(num_asteroids):
 			asteroid = self._create_random_asteroid()
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 			self.asteroids.append(asteroid)
+		
+		# Create rescue gate
+		self.rescue_gate = RescueGate(position=Vector3(-600, 0, 0), radius=50.0)
 		
 		self.input_controller = InputController(self.ship)
 		
@@ -987,12 +1112,25 @@ class VoidRescuerGame(GameApplication):
 		self.ship_destroyed = False
 		self.current_time = 0.0
 		self.last_time = time.time()
+<<<<<<< HEAD
+		self.spawn_timer = 0.0
+=======
 		self.station_position = Vector3(500, 0, 0)
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 		
 		# Reset ship
 		self.ship = SpaceShip(position=Vector3(400, 0, 0))
 		self.ship.gravity_source = self.black_hole
 		
+<<<<<<< HEAD
+		# Reset astronauts with random positions
+		self.astronauts = []
+		for _ in range(4):
+			angle = random.uniform(0, 360)
+			rad = math.radians(angle)
+			distance = random.uniform(280, 320)
+			pos = Vector3(math.cos(rad) * distance, math.sin(rad) * distance, 0)
+=======
 		# Apply difficulty settings to ship
 		self.ship.fuel = self.current_settings["initial_fuel"]
 		self.ship.fuel_max = self.current_settings["initial_fuel"]
@@ -1008,16 +1146,32 @@ class VoidRescuerGame(GameApplication):
 			angle = i * angle_step
 			rad = math.radians(angle)
 			pos = Vector3(math.cos(rad) * spawn_radius, math.sin(rad) * spawn_radius, 0)
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 			astronaut = SpaceAstronaut(position=pos)
 			astronaut.gravity_source = self.black_hole
 			self.astronauts.append(astronaut)
 		
+<<<<<<< HEAD
+		# Reset asteroids with random positions
+		self.asteroids = []
+		for _ in range(4):
+			angle = random.uniform(0, 360)
+			rad = math.radians(angle)
+			distance = random.uniform(230, 270)
+			pos = Vector3(math.cos(rad) * distance, math.sin(rad) * distance, 0)
+			asteroid = SpaceAsteroid(position=pos)
+			asteroid.gravity_source = self.black_hole
+=======
 		# Reset asteroids based on difficulty
 		self.asteroids = []
 		num_asteroids = self.current_settings["num_asteroids"]
 		for _ in range(num_asteroids):
 			asteroid = self._create_random_asteroid()
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 			self.asteroids.append(asteroid)
+		
+		# Reset rescue gate score
+		self.rescue_gate.score = 0
 		
 		self.input_controller = InputController(self.ship)
 		
@@ -1030,6 +1184,20 @@ class VoidRescuerGame(GameApplication):
 		print(f"  Thrust Power: {self.current_settings['thrust_power']}")
 		print("\nGame reloaded!\n")
 
+<<<<<<< HEAD
+	def spawn_new_astronaut(self) -> None:
+		"""Spawn a new astronaut at a random orbital position."""
+		if len(self.astronauts) >= self.max_astronauts:
+			return
+		
+		angle = random.uniform(0, 360)
+		rad = math.radians(angle)
+		distance = random.uniform(280, 320)
+		pos = Vector3(math.cos(rad) * distance, math.sin(rad) * distance, 0)
+		astronaut = SpaceAstronaut(position=pos)
+		astronaut.gravity_source = self.black_hole
+		self.astronauts.append(astronaut)
+=======
 	def check_collisions(self) -> None:
 		"""Check for collisions between game objects."""
 		# Ship-Asteroid collisions - GAME OVER
@@ -1068,6 +1236,7 @@ class VoidRescuerGame(GameApplication):
 					# Mark astronaut as lost
 					astronaut.position = Vector3(10000, 10000, 10000)
 					return
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 
 	def step(self, dt: float) -> None:
 		"""Single frame update including input, simulation, and rendering."""
@@ -1083,6 +1252,19 @@ class VoidRescuerGame(GameApplication):
 		# Update current time for animations
 		self.current_time += dt
 		
+<<<<<<< HEAD
+		# Update spawning timer
+		self.spawn_timer += dt
+		if self.spawn_timer >= self.spawn_interval:
+			self.spawn_new_astronaut()
+			self.spawn_timer = 0.0
+		
+		# Process input
+		if self.input_controller:
+			self.input_controller.update(dt)
+		
+=======
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 		# Update physics
 		self.ship.update(dt) # type: ignore
 		for astronaut in self.astronauts:
@@ -1090,6 +1272,17 @@ class VoidRescuerGame(GameApplication):
 		for asteroid in self.asteroids:
 			asteroid.update(dt)
 		
+<<<<<<< HEAD
+		# Check if astronauts reach the rescue gate
+		for astronaut in self.astronauts:
+			if not astronaut.is_rescued and self.rescue_gate.is_inside_gate(astronaut.position):
+				astronaut.is_rescued = True
+				astronaut.detach_tether()
+				self.rescue_gate.add_score(100)
+				print(f"✓ Astronaut Rescued at Gate! Gate Score: {self.rescue_gate.score}")
+		
+		# Mark astronauts as saved if they're 500+ units away from black hole
+=======
 		# Check collisions
 		self.check_collisions()
 		
@@ -1099,6 +1292,7 @@ class VoidRescuerGame(GameApplication):
 			return
 		
 		# Check station rescue condition: within 20 units of station center
+>>>>>>> 238e561447753cd056e5069ab8d4220dd485365a
 		for astronaut in self.astronauts:
 			if astronaut.is_rescued:
 				continue
@@ -1253,6 +1447,10 @@ class VoidRescuerGame(GameApplication):
 		# Draw asteroids
 		for asteroid in self.asteroids:
 			asteroid.render()
+		
+		# Draw rescue gate
+		if self.rescue_gate:
+			self.rescue_gate.render()
 		
 		# Render HUD text (required power info and game over message)
 		render_hud_text(self.window_width, self.window_height, self.ship, self.astronauts, self.black_hole, self.game_over, self.game_won, self.paused) # type: ignore
